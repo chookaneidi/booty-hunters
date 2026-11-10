@@ -6,6 +6,12 @@
   <title>Booty Hunters</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Firebase Compat Libraries -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
   <style>
     body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
     .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
@@ -13,151 +19,201 @@
 </head>
 <body class="min-h-screen pb-12">
 
-  <!-- Header -->
-  <header class="glass sticky top-0 z-50 px-4 py-3 border-b border-slate-700 flex justify-between items-center max-w-2xl mx-auto rounded-b-xl">
-    <div class="flex items-center gap-2">
-      <div class="p-2 bg-indigo-600 rounded-lg text-white"><i data-lucide="compass"></i></div>
-      <div>
-        <h1 class="font-bold text-lg leading-tight">Booty Hunters</h1>
-        <p class="text-xs text-slate-400">Daily Scavenger Hunt</p>
+  <!-- AUTH MODAL (Shown if not logged in) -->
+  <div id="authScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+    <div class="glass p-6 rounded-2xl max-w-sm w-full space-y-4 text-center border-indigo-500/30 border">
+      <div class="p-3 bg-indigo-600 rounded-xl w-12 h-12 mx-auto flex items-center justify-center text-white mb-2">
+        <i data-lucide="lock"></i>
       </div>
-    </div>
-    
-    <!-- Player Switcher -->
-    <div class="flex items-center gap-2 bg-slate-800 p-1 rounded-lg border border-slate-700 text-xs">
-      <span class="text-slate-400 pl-2">Player:</span>
-      <select id="playerSelect" onchange="switchPlayer(this.value)" class="bg-slate-700 text-white px-2 py-1 rounded font-semibold focus:outline-none">
-        <option value="Player 1">Player 1</option>
-        <option value="Player 2">Player 2</option>
-      </select>
-    </div>
-  </header>
-
-  <main class="max-w-2xl mx-auto px-4 mt-6 space-y-6">
-
-    <!-- Today's Prompt Banner -->
-    <section class="glass p-6 rounded-2xl text-center relative overflow-hidden border-indigo-500/30 border">
-      <div class="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl"></div>
-      <span class="text-xs font-semibold uppercase tracking-wider text-indigo-400 bg-indigo-950/60 px-3 py-1 rounded-full border border-indigo-800/50">Today's Target</span>
-      <h2 id="todayPrompt" class="text-2xl font-black mt-3 text-white">Loading target...</h2>
-      <p class="text-xs text-slate-400 mt-2">Unlocks daily at 9:00 AM local time</p>
-    </section>
-
-    <!-- Upload Section -->
-    <section class="glass p-6 rounded-2xl space-y-4">
-      <h3 class="font-bold text-slate-200 flex items-center gap-2">
-        <i data-lucide="upload-cloud" class="text-indigo-400"></i> Submit Your Booty
-      </h3>
+      <h2 class="text-xl font-black text-white">Booty Hunters Login</h2>
+      <p class="text-xs text-slate-400">Sign in to access your daily scavenger hunt.</p>
       
-      <div class="space-y-3">
+      <div class="space-y-3 text-left">
         <div>
-          <label class="block text-xs text-slate-400 mb-1">Photo Title</label>
-          <input type="text" id="photoTitle" placeholder="e.g. Masterpiece in the wild" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          <label class="block text-xs text-slate-400 mb-1">Email</label>
+          <input type="email" id="authEmail" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="your@email.com" />
         </div>
-
         <div>
-          <label class="block text-xs text-slate-400 mb-1">Select Image</label>
-          <input type="file" id="photoInput" accept="image/*" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer" />
-        </div>
-
-        <div class="flex gap-2 pt-1">
-          <button onclick="handleUpload()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-lg text-sm transition flex items-center justify-center gap-2">
-            <i data-lucide="check"></i> Submit Photo
-          </button>
-          
-          <button onclick="handleAdmitDefeat()" class="bg-slate-800 hover:bg-slate-700 text-rose-400 border border-rose-500/30 font-semibold px-4 py-2.5 rounded-lg text-sm transition flex items-center gap-1.5" title="Wave the white flag for today!">
-            <i data-lucide="flag" class="w-4 h-4 text-rose-400"></i> Admit Defeat
-          </button>
+          <label class="block text-xs text-slate-400 mb-1">Password</label>
+          <input type="password" id="authPassword" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="••••••••" />
         </div>
       </div>
-    </section>
 
-    <!-- Side-by-Side Arena -->
-    <section class="glass p-6 rounded-2xl space-y-4">
-      <div class="flex justify-between items-center">
+      <div class="flex gap-2 pt-2">
+        <button onclick="handleLogin()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 font-bold py-2.5 rounded-lg text-sm text-white transition">Log In</button>
+        <button onclick="handleSignUp()" class="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold py-2.5 rounded-lg text-sm text-slate-200 transition">Sign Up</button>
+      </div>
+      <p id="authError" class="text-xs text-rose-400 hidden"></p>
+    </div>
+  </div>
+
+  <!-- MAIN APP (Hidden until logged in) -->
+  <div id="appScreen" class="hidden">
+    <!-- Header -->
+    <header class="glass sticky top-0 z-40 px-4 py-3 border-b border-slate-700 flex justify-between items-center max-w-2xl mx-auto rounded-b-xl">
+      <div class="flex items-center gap-2">
+        <div class="p-2 bg-indigo-600 rounded-lg text-white"><i data-lucide="compass"></i></div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight">Booty Hunters</h1>
+          <p class="text-xs text-slate-400" id="userDisplay">Logged in</p>
+        </div>
+      </div>
+      
+      <button onclick="handleLogout()" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-3 py-1.5 rounded-lg font-semibold transition">
+        Log Out
+      </button>
+    </header>
+
+    <main class="max-w-2xl mx-auto px-4 mt-6 space-y-6">
+
+      <!-- Today's Prompt Banner -->
+      <section class="glass p-6 rounded-2xl text-center relative overflow-hidden border-indigo-500/30 border">
+        <div class="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl"></div>
+        <span class="text-xs font-semibold uppercase tracking-wider text-indigo-400 bg-indigo-950/60 px-3 py-1 rounded-full border border-indigo-800/50">Today's Target</span>
+        <h2 id="todayPrompt" class="text-2xl font-black mt-3 text-white">Loading target...</h2>
+        <p class="text-xs text-slate-400 mt-2">Unlocks daily at 9:00 AM local time</p>
+      </section>
+
+      <!-- Upload Section -->
+      <section class="glass p-6 rounded-2xl space-y-4">
         <h3 class="font-bold text-slate-200 flex items-center gap-2">
-          <i data-lucide="swords" class="text-amber-400"></i> Daily Showdown
+          <i data-lucide="upload-cloud" class="text-indigo-400"></i> Submit Your Booty
         </h3>
-        <span id="speedWinner" class="text-xs font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-800/50">Fair Timezone Calc</span>
-      </div>
+        
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Photo Title</label>
+            <input type="text" id="photoTitle" placeholder="e.g. Masterpiece in the wild" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
+          </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="arenaGrid">
-        <!-- Photo cards rendered dynamically -->
-      </div>
-    </section>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Select Image</label>
+            <input type="file" id="photoInput" accept="image/*" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer" />
+          </div>
 
-    <!-- Leaderboard & Stats -->
-    <section class="glass p-6 rounded-2xl space-y-4">
-      <h3 class="font-bold text-slate-200 flex items-center gap-2">
-        <i data-lucide="trophy" class="text-yellow-400"></i> Hunter Leaderboard
-      </h3>
-      <div id="leaderboard" class="space-y-2 text-sm">
-        <!-- Rendered dynamically -->
-      </div>
-    </section>
+          <div class="flex gap-2 pt-1">
+            <button onclick="handleUpload()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-lg text-sm transition flex items-center justify-center gap-2">
+              <i data-lucide="check"></i> Submit Photo
+            </button>
+            
+            <button onclick="handleAdmitDefeat()" class="bg-slate-800 hover:bg-slate-700 text-rose-400 border border-rose-500/30 font-semibold px-4 py-2.5 rounded-lg text-sm transition flex items-center gap-1.5" title="Wave the white flag for today!">
+              <i data-lucide="flag" class="w-4 h-4 text-rose-400"></i> Admit Defeat
+            </button>
+          </div>
+        </div>
+      </section>
 
-  </main>
+      <!-- Side-by-Side Arena -->
+      <section class="glass p-6 rounded-2xl space-y-4">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold text-slate-200 flex items-center gap-2">
+            <i data-lucide="swords" class="text-amber-400"></i> Daily Showdown
+          </h3>
+          <span class="text-xs font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-800/50">Firebase Sync Active</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="arenaGrid">
+          <!-- Photo cards rendered dynamically -->
+        </div>
+      </section>
+
+      <!-- Leaderboard -->
+      <section class="glass p-6 rounded-2xl space-y-4">
+        <h3 class="font-bold text-slate-200 flex items-center gap-2">
+          <i data-lucide="trophy" class="text-yellow-400"></i> Hunter Leaderboard
+        </h3>
+        <div id="leaderboard" class="space-y-2 text-sm">
+          <!-- Rendered dynamically -->
+        </div>
+      </section>
+
+    </main>
+  </div>
 
   <script>
-    // --- 50 DAILY SCAVENGER PROMPTS (1/3 DOUBLE ENTENDRES) ---
-    const PROMPTS = [
-      // Double Entendres / Cheeky Visuals (17)
-      "Something round and soft",
-      "Something rock hard",
-      "The longest thing in your room",
-      "A set of two nice ovals",
-      "Something wet and slippery",
-      "Something hairy in an odd spot",
-      "Something that vibrates",
-      "Something that needs a good wipe",
-      "Something extra juicy",
-      "Something long, thin, and bendy",
-      "Something tight that takes effort to open",
-      "Something that fits in something else",
-      "Something you would put in your mouth",
-      "Something that fits perfectly in your hand",
-      "Something dirty that needs washing",
-      "A pair that clearly belongs together",
-      "Something you'd want to be wet",
+    // Firebase Config Credentials
+    const firebaseConfig = {
+      apiKey: "AIzaSyAp1l-vgP1dRL-4tCR3mylKwnRhHeACT7U",
+      authDomain: "booty-hunters-beb96.firebaseapp.com",
+      databaseURL: "https://booty-hunters-beb96-default-rtdb.firebaseio.com",
+      projectId: "booty-hunters-beb96",
+      storageBucket: "booty-hunters-beb96.firebasestorage.app",
+      messagingSenderId: "763036011582",
+      appId: "1:763036011582:web:27bffb738cc0419da5956f"
+    };
 
-      // Classic & Quirky Visual Targets (33)
-      "Something bright blue",
-      "A curious shadow",
-      "An unusually shaped leaf",
-      "Something vintage or retro",
-      "Reflections in water or glass",
-      "A handwritten sign or note",
-      "Something surprisingly tiny",
-      "A pattern found in nature",
-      "An item with a funny typo or name",
-      "Something vibrant yellow",
-      "A cozy corner",
-      "Something that makes you smile",
-      "An unexpected texture",
-      "A cool architectural detail",
-      "Something red in an unlikely place",
-      "Street art or a cool sticker",
-      "Something rounder than expected",
-      "A stack of three or more things",
-      "Something geometric",
-      "An item that has seen better days",
-      "Something metallic that shines",
-      "A splash of bright orange",
-      "A sign with an unusual rule",
-      "Something perfectly symmetrical",
-      "An object that looks like a face",
-      "A view through a narrow gap",
-      "Something boldly striped",
-      "High contrast light and dark",
-      "Something green that isn't a plant",
-      "A fancy or favorite mug",
-      "A quirky pair of socks or shoes",
-      "Something deep purple",
-      "A warm cup of coffee or tea"
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.database();
+
+    // Prompts Array (50 Items, 1/3 Double Entendres)
+    const PROMPTS = [
+      "Something round and soft", "Something rock hard", "The longest thing in your room",
+      "A set of two nice ovals", "Something wet and slippery", "Something hairy in an odd spot",
+      "Something that vibrates", "Something that needs a good wipe", "Something extra juicy",
+      "Something long, thin, and bendy", "Something tight that takes effort to open",
+      "Something that fits in something else", "Something you would put in your mouth",
+      "Something that fits perfectly in your hand", "Something dirty that needs washing",
+      "A pair that clearly belongs together", "Something you'd want to be wet",
+      "Something bright blue", "A curious shadow", "An unusually shaped leaf",
+      "Something vintage or retro", "Reflections in water or glass", "A handwritten sign or note",
+      "Something surprisingly tiny", "A pattern found in nature", "An item with a funny typo or name",
+      "Something vibrant yellow", "A cozy corner", "Something that makes you smile",
+      "An unexpected texture", "A cool architectural detail", "Something red in an unlikely place",
+      "Street art or a cool sticker", "Something rounder than expected", "A stack of three or more things",
+      "Something geometric", "An item that has seen better days", "Something metallic that shines",
+      "A splash of bright orange", "A sign with an unusual rule", "Something perfectly symmetrical",
+      "An object that looks like a face", "A view through a narrow gap", "Something boldly striped",
+      "High contrast light and dark", "Something green that isn't a plant", "A fancy or favorite mug",
+      "A quirky pair of socks or shoes", "Something deep purple", "A warm cup of coffee or tea"
     ];
 
-    let currentUser = "Player 1";
-    
+    let currentUser = null;
+    let dbData = {};
+
+    // Auth Listeners
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        currentUser = user;
+        document.getElementById("authScreen").classList.add("hidden");
+        document.getElementById("appScreen").classList.remove("hidden");
+        document.getElementById("userDisplay").innerText = `Hunter: ${user.email.split('@')[0]}`;
+        
+        // Listen for Realtime Database changes
+        db.ref("booty_hunters").on("value", snapshot => {
+          dbData = snapshot.val() || {};
+          render();
+        });
+      } else {
+        currentUser = null;
+        document.getElementById("authScreen").classList.remove("hidden");
+        document.getElementById("appScreen").classList.add("hidden");
+      }
+    });
+
+    function handleLogin() {
+      const email = document.getElementById("authEmail").value;
+      const pass = document.getElementById("authPassword").value;
+      auth.signInWithEmailAndPassword(email, pass).catch(err => showAuthError(err.message));
+    }
+
+    function handleSignUp() {
+      const email = document.getElementById("authEmail").value;
+      const pass = document.getElementById("authPassword").value;
+      auth.createUserWithEmailAndPassword(email, pass).catch(err => showAuthError(err.message));
+    }
+
+    function handleLogout() {
+      auth.signOut();
+    }
+
+    function showAuthError(msg) {
+      const errEl = document.getElementById("authError");
+      errEl.innerText = msg;
+      errEl.classList.remove("hidden");
+    }
+
     function getTodayPrompt() {
       const today = new Date().toDateString();
       let hash = 0;
@@ -180,38 +236,23 @@
       return `${hrs}h ${mins}m ${secs}s after 9 AM`;
     }
 
-    function getStoredData() {
-      const data = localStorage.getItem("bootyhunters_data");
-      return data ? JSON.parse(data) : {};
-    }
-
-    function saveData(data) {
-      localStorage.setItem("bootyhunters_data", JSON.stringify(data));
-      render();
-    }
-
-    function switchPlayer(name) {
-      currentUser = name;
-      render();
-    }
-
     function handleUpload() {
       const titleInput = document.getElementById("photoTitle");
       const fileInput = document.getElementById("photoInput");
 
       if (!titleInput.value || !fileInput.files[0]) {
-        alert("Please enter a photo title and select an image.");
+        alert("Please enter a title and select an image.");
         return;
       }
 
       const reader = new FileReader();
       reader.onload = function(e) {
-        const data = getStoredData();
         const todayKey = new Date().toISOString().split('T')[0];
+        const userKey = currentUser.uid;
+        const userName = currentUser.email.split('@')[0];
 
-        if (!data[todayKey]) data[todayKey] = {};
-
-        data[todayKey][currentUser] = {
+        db.ref(`booty_hunters/${todayKey}/${userKey}`).set({
+          authorName: userName,
           title: titleInput.value,
           image: e.target.result,
           defeated: false,
@@ -219,9 +260,8 @@
           elapsedSeconds: getElapsedSince9AM(),
           ratings: {},
           comments: []
-        };
+        });
 
-        saveData(data);
         titleInput.value = "";
         fileInput.value = "";
       };
@@ -229,13 +269,13 @@
     }
 
     function handleAdmitDefeat() {
-      if (!confirm("Are you sure you want to admit defeat today? This unlocks your friend's photo!")) return;
-
-      const data = getStoredData();
+      if (!confirm("Admit defeat for today?")) return;
       const todayKey = new Date().toISOString().split('T')[0];
-      if (!data[todayKey]) data[todayKey] = {};
+      const userKey = currentUser.uid;
+      const userName = currentUser.email.split('@')[0];
 
-      data[todayKey][currentUser] = {
+      db.ref(`booty_hunters/${todayKey}/${userKey}`).set({
+        authorName: userName,
         title: "Admitted Defeat 🏳️",
         image: null,
         defeated: true,
@@ -243,82 +283,78 @@
         elapsedSeconds: 999999,
         ratings: {},
         comments: []
-      };
-
-      saveData(data);
+      });
     }
 
-    function ratePhoto(player, stars) {
-      const data = getStoredData();
+    function ratePhoto(targetUid, stars) {
       const todayKey = new Date().toISOString().split('T')[0];
-      if (data[todayKey] && data[todayKey][player] && !data[todayKey][player].defeated) {
-        data[todayKey][player].ratings[currentUser] = stars;
-        saveData(data);
-      }
+      db.ref(`booty_hunters/${todayKey}/${targetUid}/ratings/${currentUser.uid}`).set(stars);
     }
 
-    function addComment(player, inputId) {
+    function addComment(targetUid, inputId) {
       const input = document.getElementById(inputId);
       if (!input.value) return;
 
-      const data = getStoredData();
       const todayKey = new Date().toISOString().split('T')[0];
-      if (data[todayKey] && data[todayKey][player]) {
-        data[todayKey][player].comments.push({
-          author: currentUser,
-          text: input.value,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        });
-        saveData(data);
-      }
+      const userName = currentUser.email.split('@')[0];
+      const commentRef = db.ref(`booty_hunters/${todayKey}/${targetUid}/comments`).push();
+      
+      commentRef.set({
+        author: userName,
+        text: input.value,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
     }
 
     function render() {
       document.getElementById("todayPrompt").innerText = `"${getTodayPrompt()}"`;
-      const data = getStoredData();
       const todayKey = new Date().toISOString().split('T')[0];
-      const todayData = data[todayKey] || {};
+      const todayData = dbData[todayKey] || {};
 
       const arenaGrid = document.getElementById("arenaGrid");
       arenaGrid.innerHTML = "";
 
-      ["Player 1", "Player 2"].forEach(player => {
-        const entry = todayData[player];
-        const card = document.createElement("div");
-        card.className = "bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between";
+      const userUids = Object.keys(todayData);
 
-        if (entry) {
+      if (userUids.length === 0) {
+        arenaGrid.innerHTML = `<p class="text-xs text-slate-500 col-span-2 text-center py-8">No submissions yet today. Be the first to hunt!</p>`;
+      } else {
+        userUids.forEach(uid => {
+          const entry = todayData[uid];
+          const card = document.createElement("div");
+          card.className = "bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between";
+
+          const commentsArr = entry.comments ? Object.values(entry.comments) : [];
+          const ratingsObj = entry.ratings || {};
+          const avgRating = Object.values(ratingsObj).length 
+            ? (Object.values(ratingsObj).reduce((a,b)=>a+b,0) / Object.values(ratingsObj).length).toFixed(1)
+            : "Unrated";
+
           if (entry.defeated) {
             card.innerHTML = `
               <div>
                 <div class="flex justify-between items-center mb-2">
-                  <span class="font-bold text-rose-400">${player}</span>
+                  <span class="font-bold text-rose-400">${entry.authorName}</span>
                   <span class="text-xs text-slate-400">${entry.uploadedAt}</span>
                 </div>
                 <div class="w-full h-48 bg-rose-950/20 border-2 border-dashed border-rose-900/50 rounded-lg flex flex-col items-center justify-center text-rose-400 p-4 mb-2">
                   <i data-lucide="flag" class="w-8 h-8 mb-2 opacity-80"></i>
                   <p class="font-bold text-sm">Admitted Defeat</p>
-                  <p class="text-xs text-rose-300/70 text-center mt-1">Couldn't find the booty today!</p>
                 </div>
                 <div class="space-y-1 text-xs border-t border-slate-800 pt-2 max-h-24 overflow-y-auto">
-                  ${entry.comments.map(c => `<div><strong class="text-slate-300">${c.author}:</strong> ${c.text}</div>`).join('')}
+                  ${commentsArr.map(c => `<div><strong class="text-slate-300">${c.author}:</strong> ${c.text}</div>`).join('')}
                 </div>
               </div>
-
               <div class="flex gap-2 mt-3 pt-2 border-t border-slate-800">
-                <input type="text" id="comment-${player}" placeholder="Send comforting words..." class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs w-full text-white focus:outline-none" />
-                <button onclick="addComment('${player}', 'comment-${player}')" class="bg-indigo-600 px-3 py-1 rounded text-xs font-semibold">Post</button>
+                <input type="text" id="comment-${uid}" placeholder="Send comforting words..." class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs w-full text-white focus:outline-none" />
+                <button onclick="addComment('${uid}', 'comment-${uid}')" class="bg-indigo-600 px-3 py-1 rounded text-xs font-semibold">Post</button>
               </div>
             `;
           } else {
-            const avgRating = Object.values(entry.ratings).length 
-              ? (Object.values(entry.ratings).reduce((a,b)=>a+b,0) / Object.values(entry.ratings).length).toFixed(1)
-              : "Unrated";
-
             card.innerHTML = `
               <div>
                 <div class="flex justify-between items-center mb-2">
-                  <span class="font-bold text-indigo-400">${player}</span>
+                  <span class="font-bold text-indigo-400">${entry.authorName}</span>
                   <span class="text-xs text-slate-400">${entry.uploadedAt}</span>
                 </div>
                 <img src="${entry.image}" class="w-full h-48 object-cover rounded-lg mb-2" />
@@ -328,49 +364,28 @@
                 <div class="flex items-center gap-1 mb-3">
                   <span class="text-xs text-slate-400 mr-1">Rate:</span>
                   ${[1,2,3,4,5].map(s => `
-                    <button onclick="ratePhoto('${player}', ${s})" class="text-sm ${ (entry.ratings[currentUser] >= s) ? 'text-amber-400' : 'text-slate-600' }">★</button>
+                    <button onclick="ratePhoto('${uid}', ${s})" class="text-sm ${ (ratingsObj[currentUser.uid] >= s) ? 'text-amber-400' : 'text-slate-600' }">★</button>
                   `).join('')}
                   <span class="text-xs text-slate-400 ml-auto">Avg: ${avgRating}★</span>
                 </div>
 
                 <div class="space-y-1 text-xs border-t border-slate-800 pt-2 max-h-24 overflow-y-auto">
-                  ${entry.comments.map(c => `<div><strong class="text-slate-300">${c.author}:</strong> ${c.text}</div>`).join('')}
+                  ${commentsArr.map(c => `<div><strong class="text-slate-300">${c.author}:</strong> ${c.text}</div>`).join('')}
                 </div>
               </div>
 
               <div class="flex gap-2 mt-3 pt-2 border-t border-slate-800">
-                <input type="text" id="comment-${player}" placeholder="Add comment..." class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs w-full text-white focus:outline-none" />
-                <button onclick="addComment('${player}', 'comment-${player}')" class="bg-indigo-600 px-3 py-1 rounded text-xs font-semibold">Post</button>
+                <input type="text" id="comment-${uid}" placeholder="Add comment..." class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs w-full text-white focus:outline-none" />
+                <button onclick="addComment('${uid}', 'comment-${uid}')" class="bg-indigo-600 px-3 py-1 rounded text-xs font-semibold">Post</button>
               </div>
             `;
           }
-        } else {
-          card.innerHTML = `
-            <div class="text-center py-12 text-slate-500">
-              <i data-lucide="clock" class="mx-auto mb-2 opacity-50"></i>
-              <p class="text-xs font-semibold">${player} has not uploaded yet today.</p>
-            </div>
-          `;
-        }
-        arenaGrid.appendChild(card);
-      });
-
-      const leaderboard = document.getElementById("leaderboard");
-      leaderboard.innerHTML = `
-        <div class="flex justify-between p-2.5 bg-slate-900 rounded-lg">
-          <span class="font-semibold text-slate-200">Player 1</span>
-          <span class="text-xs text-emerald-400 font-mono flex items-center gap-1">⚡ Active Hunter</span>
-        </div>
-        <div class="flex justify-between p-2.5 bg-slate-900 rounded-lg">
-          <span class="font-semibold text-slate-200">Player 2</span>
-          <span class="text-xs text-emerald-400 font-mono flex items-center gap-1">⚡ Active Hunter</span>
-        </div>
-      `;
+          arenaGrid.appendChild(card);
+        });
+      }
 
       lucide.createIcons();
     }
-
-    render();
   </script>
 </body>
 </html>
