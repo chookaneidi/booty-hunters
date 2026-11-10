@@ -3,9 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Booty Hunters</title>
+  <title>Booty Hunters - Pirate Cove Bounty</title>
+  
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Google Fonts for Pirate Theme -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <!-- Firebase Compat Libraries -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -13,125 +20,354 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 
   <style>
-    body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
-    .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    body {
+      background-color: #291546;
+      color: #f8fafc;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    
+    .font-pirate {
+      font-family: 'Cinzel', serif;
+    }
+
+    /* Style B Exact Color Palette */
+    .bg-cove-teal-header { background-color: #08434d; }
+    .bg-cove-purple-body { background-color: #291546; }
+    .bg-cove-purple-footer { background-color: #693198; }
+    .bg-cove-subnav { background-color: #052f36; }
+    
+    /* Player Cards */
+    .card-teal-exact { 
+      background-color: #0e6d7a; 
+      border: 3px solid #1db6c9; 
+    }
+    .card-gold-exact { 
+      background-color: #e8982a; 
+      border: 3px solid #fad053; 
+    }
+
+    /* Soft Dark Red & Dark Orange Badges */
+    .badge-soft-red {
+      background-color: #9b3426;
+      color: #ffffff;
+      border: 1px solid #dc695a;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .badge-dark-orange {
+      background-color: #8d4019;
+      color: #ffffff;
+      border: 1px solid #c76f3c;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    .badge-purple-ribbon {
+      background: linear-gradient(180deg, #883bf5 0%, #6823cb 100%);
+      color: #ffffff;
+      border: 1px solid #b68bfb;
+    }
+
+    /* Sharp 3D Gold Typography matching image */
+    .title-3d-gold {
+      color: #ffcf33;
+      font-family: 'Cinzel', serif;
+      font-weight: 900;
+      line-height: 0.85;
+      text-transform: uppercase;
+      text-align: center;
+      text-shadow: 
+        0 2px 0 #853306,
+        0 4px 0 #571f02,
+        1px 1px 0 #571f02,
+        -1px -1px 0 #571f02;
+      filter: drop-shadow(0px 3px 4px rgba(0, 0, 0, 0.7));
+    }
+
+    /* Parchment Scroll styling for Today's Target */
+    .parchment-scroll {
+      background: linear-gradient(180deg, #fce9bf 0%, #f3d799 70%, #e6be6c 100%);
+      color: #3b1e06;
+      border: 3px solid #c48737;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(180, 83, 9, 0.25);
+      position: relative;
+    }
+    .parchment-scroll::before, .parchment-scroll::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 104%;
+      top: -2%;
+      background: linear-gradient(180deg, #b45309 0%, #78350f 100%);
+      border-radius: 6px;
+      border: 1px solid #fef3c7;
+    }
+    .parchment-scroll::before { left: -10px; box-shadow: 3px 0 6px rgba(0,0,0,0.5); }
+    .parchment-scroll::after { right: -10px; box-shadow: -3px 0 6px rgba(0,0,0,0.5); }
+
+    /* Additional Helper Colors & Button Styling */
+    .bg-cove-card { background-color: #0b5861; }
+    .bg-cove-dark { background-color: #06343b; }
+    .bg-cove-inner { background-color: #08434c; }
+    .text-gold { color: #fef08a; }
+    
+    .btn-gold {
+      background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+      color: #451a03;
+      border: 1px solid #fef08a;
+      box-shadow: 0 4px 10px rgba(217, 119, 6, 0.4);
+    }
+    .btn-gold:hover {
+      background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%);
+    }
+
+    /* Clean Vintage Map Canvas (No Yellow Dots) */
+    .map-canvas {
+      background-color: #094750;
+      border: 2px solid #d97706;
+      box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #291546; }
+    ::-webkit-scrollbar-thumb { background: #fbbf24; border-radius: 4px; }
   </style>
 </head>
-<body class="min-h-screen pb-12">
+<body class="min-h-screen text-slate-100 flex flex-col items-center justify-start bg-cove-purple-body">
 
-  <!-- AUTH MODAL (Shown if not logged in) -->
+  <!-- AUTH MODAL -->
   <div id="authScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
-    <div class="glass p-6 rounded-2xl max-w-sm w-full space-y-4 text-center border-indigo-500/30 border">
-      <div class="p-3 bg-indigo-600 rounded-xl w-12 h-12 mx-auto flex items-center justify-center text-white mb-2">
-        <i data-lucide="lock"></i>
+    <div class="bg-cove-teal-header p-6 rounded-2xl max-w-sm w-full space-y-4 text-center border-2 border-amber-500/50 shadow-2xl">
+      <div class="p-3 bg-amber-500/20 rounded-xl w-12 h-12 mx-auto flex items-center justify-center text-amber-400 border border-amber-400 mb-2">
+        <svg class="w-7 h-7 text-amber-400" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M5 4h14a2 2 0 0 1 2 2v3H3V6a2 2 0 0 1 2-2zm-2 7h18v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7zm9 1a1.5 1.5 0 0 0-1.5 1.5v1a1.5 1.5 0 0 0 3 0v-1A1.5 1.5 0 0 0 12 12z"/>
+        </svg>
       </div>
-      <h2 class="text-xl font-black text-white">Booty Hunters Login</h2>
-      <p class="text-xs text-slate-400">Sign in to access your daily scavenger hunt.</p>
+      <h2 class="font-pirate text-xl font-black text-amber-300">Booty Hunters Login</h2>
+      <p class="text-xs text-slate-200">Sign in to access your daily scavenger hunt.</p>
       
       <div class="space-y-3 text-left">
         <div>
-          <label class="block text-xs text-slate-400 mb-1">Email</label>
-          <input type="email" id="authEmail" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="your@email.com" />
+          <label class="block text-xs text-amber-300 font-semibold mb-1">Email</label>
+          <input type="email" id="authEmail" class="w-full bg-cove-dark border border-amber-500/50 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:border-amber-400" placeholder="your@email.com" />
         </div>
         <div>
-          <label class="block text-xs text-slate-400 mb-1">Password</label>
-          <input type="password" id="authPassword" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" placeholder="••••••••" />
+          <label class="block text-xs text-amber-300 font-semibold mb-1">Password</label>
+          <input type="password" id="authPassword" class="w-full bg-cove-dark border border-amber-500/50 rounded-xl p-2.5 text-sm text-white focus:outline-none focus:border-amber-400" placeholder="••••••••" />
         </div>
       </div>
 
       <div class="flex gap-2 pt-2">
-        <button onclick="handleLogin()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 font-bold py-2.5 rounded-lg text-sm text-white transition">Log In</button>
-        <button onclick="handleSignUp()" class="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 font-semibold py-2.5 rounded-lg text-sm text-slate-200 transition">Sign Up</button>
+        <button onclick="handleLogin()" class="flex-1 btn-gold py-2.5 rounded-xl text-sm transition font-bold">Log In</button>
+        <button onclick="handleSignUp()" class="flex-1 bg-cove-inner hover:bg-slate-800 border border-amber-600/50 text-amber-200 font-semibold py-2.5 rounded-xl text-sm transition">Sign Up</button>
       </div>
+
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
     </div>
   </div>
 
-  <!-- MAIN APP (Hidden until logged in) -->
-  <div id="appScreen" class="hidden">
-    <!-- Header -->
-    <header class="glass sticky top-0 z-40 px-4 py-3 border-b border-slate-700 flex justify-between items-center max-w-2xl mx-auto rounded-b-xl">
-      <div class="flex items-center gap-2">
-        <div class="p-2 bg-indigo-600 rounded-lg text-white"><i data-lucide="compass"></i></div>
-        <div>
-          <h1 class="font-bold text-lg leading-tight">Booty Hunters</h1>
-          <p class="text-xs text-slate-400" id="userDisplay">Logged in</p>
+  <!-- APP CONTAINER -->
+  <div id="appScreen" class="w-full max-w-md hidden flex flex-col min-h-screen bg-cove-purple-body shadow-2xl border-x-2 border-amber-500/30 relative">
+    
+    <!-- Top Header Navigation -->
+    <header class="bg-cove-teal-header border-b-2 border-amber-500/80 sticky top-0 z-30 py-3 px-4 shadow-xl">
+      <div class="flex justify-between items-center">
+        <!-- Circular Back / Avatar Button -->
+        <button onclick="switchTab('profile')" class="w-9 h-9 rounded-full bg-gradient-to-b from-amber-500 to-amber-700 border-2 border-amber-300 text-white flex items-center justify-center shadow-lg text-base" id="headerAvatar" title="Profile">
+          💣
+        </button>
+
+        <!-- Stacked 2-Line "BOOTY HUNTERS" Text -->
+        <div class="flex flex-col items-center">
+          <span class="title-3d-gold text-2xl tracking-wider">BOOTY</span>
+          <span class="title-3d-gold text-2xl tracking-wider -mt-1">HUNTERS</span>
         </div>
+
+        <!-- Balanced Spacer -->
+        <div class="w-9 h-9"></div>
       </div>
-      
-      <button onclick="handleLogout()" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-3 py-1.5 rounded-lg font-semibold transition">
-        Log Out
-      </button>
     </header>
 
-    <main class="max-w-2xl mx-auto px-4 mt-6 space-y-6">
+    <!-- MAIN VIEW PANELS -->
+    <main class="flex-1 px-3 pt-3 pb-24 space-y-4 bg-cove-purple-body">
 
-      <!-- Today's Prompt Banner -->
-      <section class="glass p-6 rounded-2xl text-center relative overflow-hidden border-indigo-500/30 border">
-        <div class="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl"></div>
-        <span class="text-xs font-semibold uppercase tracking-wider text-indigo-400 bg-indigo-950/60 px-3 py-1 rounded-full border border-indigo-800/50">Today's Target</span>
-        <h2 id="todayPrompt" class="text-2xl font-black mt-3 text-white">Loading target...</h2>
-        <p class="text-xs text-slate-400 mt-2">Unlocks daily at 9:00 AM local time</p>
-      </section>
-
-      <!-- Upload Section -->
-      <section class="glass p-6 rounded-2xl space-y-4">
-        <h3 class="font-bold text-slate-200 flex items-center gap-2">
-          <i data-lucide="upload-cloud" class="text-indigo-400"></i> Submit Your Booty
-        </h3>
+      <!-- ================= TAB 1: TARGET / SHOWDOWN ================= -->
+      <div id="viewTarget" class="space-y-5">
         
-        <div class="space-y-3">
+        <!-- Parchment Scroll Banner for Today's Target -->
+        <section class="parchment-scroll rounded-xl p-4 text-center mx-2 my-1">
+          <div class="inline-block badge-soft-red text-[10px] font-black uppercase tracking-widest px-3 py-0.5 rounded-full shadow-md mb-1">
+            CURRENT BOOTY TARGET
+          </div>
+          <h2 id="todayPromptText" class="font-serif text-xl font-bold text-[#4a240c] my-2 leading-snug tracking-normal">
+            "Something round and soft"
+          </h2>
+          <div class="inline-block badge-dark-orange text-[10px] font-black tracking-wide px-3 py-0.5 rounded-full shadow-md mt-0.5">
+            8:00 AM START
+          </div>
+        </section>
+
+        <!-- Side-by-Side Showdown Arena -->
+        <section class="space-y-3">
+          <div class="flex justify-center items-center gap-3">
+            <div id="showdownLeftIcon" class="w-8 h-8 rounded-full bg-cove-teal-header border-2 border-cyan-300 flex items-center justify-center text-base shadow">💣</div>
+            <span class="badge-soft-red font-pirate font-bold text-xs px-4 py-1 rounded-full tracking-widest uppercase shadow-lg">
+              SHOWDOWN
+            </span>
+            <div id="showdownRightIcon" class="w-8 h-8 rounded-full bg-amber-800 border-2 border-amber-300 flex items-center justify-center text-base shadow">📦</div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 relative" id="arenaGrid">
+            <!-- Cards rendered dynamically -->
+          </div>
+        </section>
+      </div>
+
+      <!-- ================= TAB 2: SUBMIT YOUR BOOTY ================= -->
+      <div id="viewSubmit" class="space-y-4 hidden">
+        <section class="bg-cove-teal-header border-2 border-amber-500/40 rounded-2xl p-4 shadow-xl space-y-3 text-center">
+          <div class="inline-block badge-dark-orange text-[10px] font-black uppercase tracking-widest px-3.5 py-1 rounded-full shadow-md mb-1">
+            SUBMIT YOUR BOOTY
+          </div>
+          
+          <div class="space-y-3 text-left pt-1">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-200 mb-1">Photo Title / Caption</label>
+              <input type="text" id="photoTitle" placeholder="e.g. Masterpiece in the wild..." class="w-full bg-cove-purple-body border border-amber-500/50 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-amber-400" />
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-200 mb-1">Select Photo</label>
+              <input type="file" id="photoInput" accept="image/*" class="w-full text-xs text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-amber-500 file:text-amber-950 hover:file:bg-amber-400 cursor-pointer bg-cove-purple-body border border-amber-500/50 rounded-xl p-1" />
+            </div>
+
+            <div class="flex gap-2 pt-2">
+              <button onclick="handleUpload()" class="flex-1 btn-gold py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition">
+                <i data-lucide="upload-cloud" class="w-4 h-4"></i> Submit Photo
+              </button>
+              
+              <button onclick="handleAdmitDefeat()" class="bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-500/50 font-semibold px-3 py-2.5 rounded-xl text-xs transition flex items-center gap-1" title="Wave white flag">
+                <i data-lucide="flag" class="w-3.5 h-3.5 text-rose-300"></i> Admit Defeat
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ================= TAB 3: PAST MAPS (HISTORIC SHOWDOWNS) ================= -->
+      <div id="viewMaps" class="space-y-4 hidden">
+        <div class="bg-cove-teal-header border border-amber-500/50 rounded-2xl p-3.5 shadow-xl text-center">
+          <h2 class="font-pirate font-bold text-gold text-lg flex items-center justify-center gap-2">
+            <i data-lucide="map" class="w-5 h-5 text-amber-400"></i> HISTORIC VOYAGES & MAPS
+          </h2>
+          <p class="text-xs text-slate-200 mt-0.5">Tap any past date to inspect both photos & votes!</p>
+        </div>
+
+        <!-- Map Container -->
+        <div class="map-canvas rounded-2xl p-4 space-y-4 relative min-h-[380px]">
+          <div class="flex items-center justify-between pb-2 border-b border-amber-800/40">
+            <span class="text-[10px] font-bold uppercase tracking-widest text-amber-400 bg-cove-dark px-3 py-1 rounded-full border border-amber-700/50">X Marks The Spot</span>
+            <span class="text-[11px] text-amber-200/80 font-serif">Past Showdowns 📜</span>
+          </div>
+
+          <!-- Dynamic Timeline Map Trail -->
+          <div id="historicLogsList" class="space-y-4 relative pl-5 pr-1 border-l-2 border-dashed border-amber-400/50 ml-2 py-2">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- HISTORIC DETAIL MODAL POP-UP -->
+      <div id="historicModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4 hidden">
+        <div class="bg-cove-teal-header border-2 border-amber-500/70 rounded-2xl max-w-md w-full p-4 space-y-3 max-h-[90vh] overflow-y-auto shadow-2xl relative">
+          <button onclick="closeHistoricModal()" class="absolute top-3 right-3 text-amber-300 hover:text-white bg-cove-dark p-1.5 rounded-full border border-amber-500/40">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+          <div id="historicModalContent">
+            <!-- Filled dynamically when tapping a past day -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= TAB 4: LEADERBOARD ================= -->
+      <div id="viewLeaderboard" class="space-y-4 hidden">
+        <div class="bg-cove-teal-header border border-amber-500/50 rounded-2xl p-4 shadow-xl text-center">
+          <h2 class="font-pirate font-bold text-gold text-lg flex items-center justify-center gap-2">
+            <i data-lucide="trophy" class="w-5 h-5 text-amber-400"></i> HUNTER LEADERBOARD
+          </h2>
+          <p class="text-xs text-slate-200 mt-0.5">Who rules the high seas of booty hunting?</p>
+        </div>
+
+        <div class="bg-cove-teal-header border border-amber-500/50 rounded-2xl p-4 space-y-3" id="leaderboardList">
+          <!-- Leaderboard rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- ================= TAB 5: CREW PROFILE & SETTINGS ================= -->
+      <div id="viewProfile" class="space-y-4 hidden">
+        <div class="bg-cove-teal-header border-2 border-amber-500/50 rounded-2xl p-4 shadow-xl text-center">
+          <h2 class="font-pirate font-bold text-amber-300 text-lg flex items-center justify-center gap-2">
+            <i data-lucide="user-check" class="w-5 h-5 text-amber-400"></i> CREW PROFILE & SETTINGS
+          </h2>
+          <p class="text-xs text-slate-200 mt-0.5">Customize your name, pirate badge, and account.</p>
+        </div>
+
+        <div class="bg-cove-teal-header border-2 border-amber-500/50 rounded-2xl p-4 space-y-4 shadow-xl">
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Photo Title</label>
-            <input type="text" id="photoTitle" placeholder="e.g. Masterpiece in the wild" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:outline-none focus:border-indigo-500" />
+            <label class="block text-xs font-semibold text-amber-300 mb-1">Hunter Moniker / Alias</label>
+            <input type="text" id="profileAliasInput" class="w-full bg-cove-purple-body border border-amber-500/60 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-amber-400 font-bold" placeholder="e.g. LootTracker_Jess" />
           </div>
 
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Select Image</label>
-            <input type="file" id="photoInput" accept="image/*" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer" />
+            <label class="block text-xs font-semibold text-amber-300 mb-2">Select Avatar Badge</label>
+            <div class="grid grid-cols-2 gap-3" id="avatarGrid">
+              <!-- Avatar Option Buttons -->
+            </div>
           </div>
 
-          <div class="flex gap-2 pt-1">
-            <button onclick="handleUpload()" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-lg text-sm transition flex items-center justify-center gap-2">
-              <i data-lucide="check"></i> Submit Photo
-            </button>
-            
-            <button onclick="handleAdmitDefeat()" class="bg-slate-800 hover:bg-slate-700 text-rose-400 border border-rose-500/30 font-semibold px-4 py-2.5 rounded-lg text-sm transition flex items-center gap-1.5" title="Wave the white flag for today!">
-              <i data-lucide="flag" class="w-4 h-4 text-rose-400"></i> Admit Defeat
+          <button onclick="saveProfile()" class="w-full btn-gold py-3 rounded-xl text-sm font-extrabold transition shadow-lg mt-2">
+            Save Moniker & Avatar ⚔️
+          </button>
+
+          <div class="pt-3 border-t border-amber-900/50 text-center">
+            <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+              <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
           </div>
         </div>
-      </section>
-
-      <!-- Side-by-Side Arena -->
-      <section class="glass p-6 rounded-2xl space-y-4">
-        <div class="flex justify-between items-center">
-          <h3 class="font-bold text-slate-200 flex items-center gap-2">
-            <i data-lucide="swords" class="text-amber-400"></i> Daily Showdown
-          </h3>
-          <span class="text-xs font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-800/50">Firebase Sync Active</span>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="arenaGrid">
-          <!-- Photo cards rendered dynamically -->
-        </div>
-      </section>
-
-      <!-- Leaderboard -->
-      <section class="glass p-6 rounded-2xl space-y-4">
-        <h3 class="font-bold text-slate-200 flex items-center gap-2">
-          <i data-lucide="trophy" class="text-yellow-400"></i> Hunter Leaderboard
-        </h3>
-        <div id="leaderboard" class="space-y-2 text-sm">
-          <!-- Rendered dynamically -->
-        </div>
-      </section>
+      </div>
 
     </main>
+
+    <!-- FIXED BOTTOM NAVIGATION TAB BAR -->
+    <nav class="fixed bottom-0 left-0 right-0 z-40 bg-cove-purple-footer border-t-2 border-amber-500/60 max-w-md mx-auto px-4 py-2 flex justify-between items-center shadow-2xl">
+      <!-- Map Scroll button -->
+      <button onclick="switchTab('maps')" id="tabBtnMaps" class="relative w-10 h-10 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 hover:border-amber-400 flex items-center justify-center transition" title="Past Voyages">
+        <i data-lucide="map" class="w-5 h-5"></i>
+      </button>
+
+      <!-- Submit Booty Book button -->
+      <button onclick="switchTab('submit')" id="tabBtnSubmit" class="relative w-10 h-10 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 hover:border-amber-400 flex items-center justify-center transition" title="Submit Booty">
+        <i data-lucide="book-open" class="w-5 h-5"></i>
+      </button>
+
+      <!-- Central Floating Action Button (Teal Circular Crossed Swords) -->
+      <button onclick="switchTab('target')" id="tabBtnTarget" class="w-13 h-13 -mt-4 rounded-full bg-cyan-600 border-3 border-amber-300 text-white flex items-center justify-center transition shadow-2xl hover:scale-105 p-3" title="Today's Target & Showdown">
+        <i data-lucide="swords" class="w-6 h-6 text-amber-200"></i>
+      </button>
+
+      <!-- Leaderboard Trophy button -->
+      <button onclick="switchTab('leaderboard')" id="tabBtnLeaderboard" class="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 hover:border-amber-400 flex items-center justify-center transition" title="Leaderboard">
+        <i data-lucide="trophy" class="w-5 h-5"></i>
+      </button>
+
+      <!-- Settings Gear button -->
+      <button onclick="switchTab('profile')" id="tabBtnProfile" class="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 hover:border-amber-400 flex items-center justify-center transition" title="Profile & Settings">
+        <i data-lucide="settings" class="w-5 h-5"></i>
+      </button>
+    </nav>
   </div>
 
   <script>
-    // Firebase Config Credentials
+    // --- FIREBASE CONFIGURATION (Exact Credentials) ---
     const firebaseConfig = {
       apiKey: "AIzaSyAp1l-vgP1dRL-4tCR3mylKwnRhHeACT7U",
       authDomain: "booty-hunters-beb96.firebaseapp.com",
@@ -142,12 +378,24 @@
       appId: "1:763036011582:web:27bffb738cc0419da5956f"
     };
 
-    // Initialize Firebase
+    // Firebase Initialization
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.database();
 
-    // Prompts Array (50 Items, 1/3 Double Entendres)
+    // 8 CHEEKY PIRATE AVATARS
+    const AVATARS = [
+      { id: "cannonballs", emoji: "💣", name: "Double Cannonballs" },
+      { id: "chest", emoji: "📦", name: "The Grand Chest" },
+      { id: "spyglass", emoji: "🔭", name: "Peep Spyglass" },
+      { id: "peach", emoji: "🍑", name: "The Sailor's Peach" },
+      { id: "hook", emoji: "🧜‍♀️", name: "Siren's Hook" },
+      { id: "cracker", emoji: "🦜", name: "Polly's Cracker" },
+      { id: "pegleg", emoji: "🪵", name: "Peg-Leg" },
+      { id: "doubloons", emoji: "🪙", name: "Golden Doubloons" }
+    ];
+
+    // 50 PROMPTS (1/3 Double Entendres)
     const PROMPTS = [
       "Something round and soft", "Something rock hard", "The longest thing in your room",
       "A set of two nice ovals", "Something wet and slippery", "Something hairy in an odd spot",
@@ -169,28 +417,101 @@
       "A quirky pair of socks or shoes", "Something deep purple", "A warm cup of coffee or tea"
     ];
 
+    // APP STATE
     let currentUser = null;
+    let localProfile = {
+      alias: "Hunter",
+      avatarId: "cannonballs"
+    };
+    let activeTab = "target";
     let dbData = {};
 
-    // Auth Listeners
-    auth.onAuthStateChanged(user => {
-      if (user) {
-        currentUser = user;
-        document.getElementById("authScreen").classList.add("hidden");
-        document.getElementById("appScreen").classList.remove("hidden");
-        document.getElementById("userDisplay").innerText = `Hunter: ${user.email.split('@')[0]}`;
-        
-        // Listen for Realtime Database changes
-        db.ref("booty_hunters").on("value", snapshot => {
-          dbData = snapshot.val() || {};
-          render();
-        });
-      } else {
-        currentUser = null;
-        document.getElementById("authScreen").classList.remove("hidden");
-        document.getElementById("appScreen").classList.add("hidden");
+    // INITIALIZATION & AUTH LISTENER
+    window.onload = function() {
+      renderAvatarPicker();
+      
+      auth.onAuthStateChanged(user => {
+        if (user) {
+          currentUser = user;
+          localProfile.alias = user.email.split('@')[0];
+          document.getElementById("authScreen").classList.add("hidden");
+          document.getElementById("appScreen").classList.remove("hidden");
+          
+          // Fetch saved profile if available
+          db.ref(`users/${user.uid}`).once('value', snap => {
+            if (snap.exists()) {
+              localProfile = { ...localProfile, ...snap.val() };
+              const aliasInput = document.getElementById("profileAliasInput");
+              if (aliasInput) aliasInput.value = localProfile.alias;
+              renderAvatarPicker();
+            }
+          });
+
+          // Listen for DB sync
+          db.ref("booty_hunters").on("value", snapshot => {
+            dbData = snapshot.val() || {};
+            render();
+          });
+        } else {
+          currentUser = null;
+          document.getElementById("authScreen").classList.remove("hidden");
+          document.getElementById("appScreen").classList.add("hidden");
+        }
+      });
+    };
+
+    // PROFILE, NAVIGATION & AUTH FUNCTIONS
+    function switchTab(tabId) {
+      activeTab = tabId;
+      const tabs = ['target', 'submit', 'maps', 'leaderboard', 'profile'];
+      tabs.forEach(t => {
+        const viewEl = document.getElementById(`view${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        const btnEl = document.getElementById(`tabBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (viewEl) {
+          if (t === tabId) viewEl.classList.remove('hidden');
+          else viewEl.classList.add('hidden');
+        }
+        if (btnEl) {
+          if (t === tabId) {
+            btnEl.classList.add('border-amber-400', 'bg-amber-500/40');
+          } else {
+            btnEl.classList.remove('border-amber-400', 'bg-amber-500/40');
+          }
+        }
+      });
+      window.scrollTo(0, 0);
+      render();
+    }
+
+    function renderAvatarPicker() {
+      const grid = document.getElementById("avatarGrid");
+      if (!grid) return;
+      grid.innerHTML = AVATARS.map(av => `
+        <button onclick="selectAvatar('${av.id}')" id="av-btn-${av.id}" class="bg-cove-dark border-2 ${localProfile.avatarId === av.id ? 'border-amber-400 bg-amber-500/20' : 'border-amber-700/50'} rounded-xl p-3 flex flex-col items-center justify-center gap-1 hover:border-amber-400 transition">
+          <span class="text-3xl mb-1">${av.emoji}</span>
+          <span class="text-[11px] font-bold text-amber-200 text-center leading-tight">${av.name}</span>
+        </button>
+      `).join('');
+    }
+
+    function selectAvatar(id) {
+      localProfile.avatarId = id;
+      renderAvatarPicker();
+    }
+
+    function saveProfile() {
+      const aliasInput = document.getElementById("profileAliasInput");
+      if (aliasInput && aliasInput.value.trim()) {
+        localProfile.alias = aliasInput.value.trim();
       }
-    });
+      if (currentUser) {
+        db.ref(`users/${currentUser.uid}`).set({
+          alias: localProfile.alias,
+          avatarId: localProfile.avatarId
+        });
+      }
+      switchTab("target");
+    }
 
     function handleLogin() {
       const email = document.getElementById("authEmail").value;
@@ -210,30 +531,17 @@
 
     function showAuthError(msg) {
       const errEl = document.getElementById("authError");
-      errEl.innerText = msg;
-      errEl.classList.remove("hidden");
+      if (errEl) {
+        errEl.innerText = msg;
+        errEl.classList.remove("hidden");
+      }
     }
 
-    function getTodayPrompt() {
-      const today = new Date().toDateString();
-      let hash = 0;
-      for (let i = 0; i < today.length; i++) hash = today.charCodeAt(i) + ((hash << 5) - hash);
-      return PROMPTS[Math.abs(hash) % PROMPTS.length];
-    }
-
-    function getElapsedSince9AM() {
+    function getElapsedSince8AM() {
       const now = new Date();
-      const nineAM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0, 0, 0);
-      const diffSeconds = Math.floor((now - nineAM) / 1000);
+      const eightAM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
+      const diffSeconds = Math.floor((now - eightAM) / 1000);
       return diffSeconds > 0 ? diffSeconds : 0;
-    }
-
-    function formatElapsed(seconds) {
-      if (seconds === null || seconds >= 999990) return "Defeated 🏳️";
-      const hrs = Math.floor(seconds / 3600);
-      const mins = Math.floor((seconds % 3600) / 60);
-      const secs = seconds % 60;
-      return `${hrs}h ${mins}m ${secs}s after 9 AM`;
     }
 
     function handleUpload() {
@@ -241,7 +549,7 @@
       const fileInput = document.getElementById("photoInput");
 
       if (!titleInput.value || !fileInput.files[0]) {
-        alert("Please enter a title and select an image.");
+        alert("Please enter a title and select a photo!");
         return;
       }
 
@@ -249,33 +557,35 @@
       reader.onload = function(e) {
         const todayKey = new Date().toISOString().split('T')[0];
         const userKey = currentUser.uid;
-        const userName = currentUser.email.split('@')[0];
+        const userName = localProfile.alias || currentUser.email.split('@')[0];
 
         db.ref(`booty_hunters/${todayKey}/${userKey}`).set({
           authorName: userName,
+          avatarId: localProfile.avatarId,
           title: titleInput.value,
           image: e.target.result,
           defeated: false,
           uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          elapsedSeconds: getElapsedSince9AM(),
+          elapsedSeconds: getElapsedSince8AM(),
           ratings: {},
           comments: []
         });
 
         titleInput.value = "";
         fileInput.value = "";
+        switchTab("target");
       };
       reader.readAsDataURL(fileInput.files[0]);
     }
 
     function handleAdmitDefeat() {
-      if (!confirm("Admit defeat for today?")) return;
       const todayKey = new Date().toISOString().split('T')[0];
       const userKey = currentUser.uid;
-      const userName = currentUser.email.split('@')[0];
+      const userName = localProfile.alias || currentUser.email.split('@')[0];
 
       db.ref(`booty_hunters/${todayKey}/${userKey}`).set({
         authorName: userName,
+        avatarId: localProfile.avatarId,
         title: "Admitted Defeat 🏳️",
         image: null,
         defeated: true,
@@ -284,104 +594,314 @@
         ratings: {},
         comments: []
       });
+      switchTab("target");
     }
 
     function ratePhoto(targetUid, stars) {
       const todayKey = new Date().toISOString().split('T')[0];
-      db.ref(`booty_hunters/${todayKey}/${targetUid}/ratings/${currentUser.uid}`).set(stars);
+      const myUid = currentUser.uid;
+      
+      if (targetUid === myUid) return;
+      db.ref(`booty_hunters/${todayKey}/${targetUid}/ratings/${myUid}`).set(stars);
     }
 
     function addComment(targetUid, inputId) {
       const input = document.getElementById(inputId);
-      if (!input.value) return;
+      if (!input || !input.value.trim()) return;
 
       const todayKey = new Date().toISOString().split('T')[0];
-      const userName = currentUser.email.split('@')[0];
+      const userName = localProfile.alias || currentUser.email.split('@')[0];
       const commentRef = db.ref(`booty_hunters/${todayKey}/${targetUid}/comments`).push();
-      
+
       commentRef.set({
         author: userName,
-        text: input.value,
+        text: input.value.trim(),
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       });
+      input.value = "";
     }
 
+    // UTILITY & HELPER FUNCTIONS
+    function getTodayPrompt() {
+      const today = new Date().toDateString();
+      let hash = 0;
+      for (let i = 0; i < today.length; i++) hash = today.charCodeAt(i) + ((hash << 5) - hash);
+      return PROMPTS[Math.abs(hash) % PROMPTS.length];
+    }
+
+    function formatElapsed(seconds) {
+      if (seconds === null || seconds >= 999990) return "Defeated 🏳️";
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      if (hrs > 0) return `${hrs}h ${mins}m ${secs}s`;
+      if (mins > 0) return `${mins}m ${secs}s`;
+      return `${secs}s`;
+    }
+
+    // DRAW & WINNER DETERMINATION LOGIC
+    function determineWinner(p1, p2) {
+      if (!p1 && !p2) return { overallWinner: "No Hunts", starWinner: "None", speedWinner: "None", isDraw: false };
+      if (p1 && (!p2 || p2.defeated)) return { overallWinner: p1.authorName, starWinner: p1.authorName, speedWinner: p1.authorName, isDraw: false };
+      if (p2 && (!p1 || p1.defeated)) return { overallWinner: p2.authorName, starWinner: p2.authorName, speedWinner: p2.authorName, isDraw: false };
+
+      const calcAvg = (ratings) => {
+        const vals = ratings ? Object.values(ratings) : [];
+        return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : 0;
+      };
+
+      const avg1 = calcAvg(p1.ratings);
+      const avg2 = calcAvg(p2.ratings);
+
+      let starWinner = "Draw 🤝";
+      if (avg1 > avg2) starWinner = p1.authorName;
+      else if (avg2 > avg1) starWinner = p2.authorName;
+
+      let speedWinner = "Draw 🤝";
+      if (p1.elapsedSeconds < p2.elapsedSeconds) speedWinner = p1.authorName;
+      else if (p2.elapsedSeconds < p1.elapsedSeconds) speedWinner = p2.authorName;
+
+      let overallWinner = "Draw! 🤝";
+      let isDraw = true;
+
+      if (starWinner !== "Draw 🤝" && starWinner === speedWinner) {
+        overallWinner = starWinner;
+        isDraw = false;
+      } else if (starWinner !== "Draw 🤝" && speedWinner === "Draw 🤝") {
+        overallWinner = starWinner;
+        isDraw = false;
+      } else if (speedWinner !== "Draw 🤝" && starWinner === "Draw 🤝") {
+        overallWinner = speedWinner;
+        isDraw = false;
+      }
+
+      return { overallWinner, starWinner, speedWinner, avg1: avg1.toFixed(1), avg2: avg2.toFixed(1), isDraw };
+    }
+
+    function openHistoricModal(dateKey) {
+      const dayData = dbData[dateKey];
+      if (!dayData) return;
+
+      const uids = Object.keys(dayData);
+      const p1 = dayData[uids[0]];
+      const p2 = dayData[uids[1]];
+      const res = determineWinner(p1, p2);
+
+      const modal = document.getElementById("historicModal");
+      const content = document.getElementById("historicModalContent");
+
+      content.innerHTML = `
+        <div class="text-center space-y-1 mb-3">
+          <span class="text-[10px] font-bold text-amber-400 uppercase tracking-widest bg-cove-dark px-3 py-0.5 rounded-full border border-amber-700/50">${dateKey}</span>
+          <div class="inline-block badge-dark-orange text-xs font-black px-3 py-1 rounded-full mt-1">
+            Result: ${res.isDraw ? "Draw! 🤝" : `Winner: ${res.overallWinner} 👑`}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          ${p1 ? `
+            <div class="card-teal-exact rounded-xl p-2 space-y-1.5 text-center text-xs">
+              <span class="font-bold text-white text-[11px] block truncate">${AVATARS.find(a=>a.id===p1.avatarId)?.emoji || '💣'} ${p1.authorName}</span>
+              ${p1.defeated ? `<div class="h-28 bg-black/40 rounded flex items-center justify-center font-bold text-rose-300">Defeated 🏳️</div>` : `<img src="${p1.image}" class="w-full h-28 object-cover rounded-lg border border-black/30" />`}
+              <p class="font-bold text-amber-200 text-[10px] truncate">"${p1.title}"</p>
+              <div class="text-[10px] text-amber-300 font-bold">Rating: ${res.avg1}★</div>
+              <div class="text-[9px] text-emerald-300 font-mono">⚡ ${formatElapsed(p1.elapsedSeconds)}</div>
+            </div>
+          ` : ''}
+
+          ${p2 ? `
+            <div class="card-gold-exact rounded-xl p-2 space-y-1.5 text-center text-xs">
+              <span class="font-bold text-white text-[11px] block truncate">${AVATARS.find(a=>a.id===p2.avatarId)?.emoji || '📦'} ${p2.authorName}</span>
+              ${p2.defeated ? `<div class="h-28 bg-black/40 rounded flex items-center justify-center font-bold text-rose-300">Defeated 🏳️</div>` : `<img src="${p2.image}" class="w-full h-28 object-cover rounded-lg border border-black/30" />`}
+              <p class="font-bold text-amber-200 text-[10px] truncate">"${p2.title}"</p>
+              <div class="text-[10px] text-amber-300 font-bold">Rating: ${res.avg2}★</div>
+              <div class="text-[9px] text-emerald-300 font-mono">⚡ ${formatElapsed(p2.elapsedSeconds)}</div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      modal.classList.remove("hidden");
+      lucide.createIcons();
+    }
+
+    function closeHistoricModal() {
+      document.getElementById("historicModal").classList.add("hidden");
+    }
+
+    // MAIN RENDER METHOD
     function render() {
-      document.getElementById("todayPrompt").innerText = `"${getTodayPrompt()}"`;
+      // Prompt text
+      document.getElementById("todayPromptText").innerText = `"${getTodayPrompt()}"`;
+
+      const selectedAvObj = AVATARS.find(a => a.id === localProfile.avatarId) || AVATARS[0];
+      document.getElementById("headerAvatar").innerText = selectedAvObj.emoji;
+
       const todayKey = new Date().toISOString().split('T')[0];
       const todayData = dbData[todayKey] || {};
+      const myUid = currentUser ? currentUser.uid : null;
 
+      // 1. Render Showdown Arena Cards
       const arenaGrid = document.getElementById("arenaGrid");
       arenaGrid.innerHTML = "";
 
       const userUids = Object.keys(todayData);
+      
+      const leftIconEl = document.getElementById("showdownLeftIcon");
+      const rightIconEl = document.getElementById("showdownRightIcon");
+
+      if (userUids.length > 0) {
+        const p1Av = AVATARS.find(a => a.id === (todayData[userUids[0]]?.avatarId)) || AVATARS[0];
+        if (leftIconEl) leftIconEl.innerText = p1Av.emoji;
+      } else {
+        if (leftIconEl) leftIconEl.innerText = selectedAvObj.emoji;
+      }
+
+      if (userUids.length > 1) {
+        const p2Av = AVATARS.find(a => a.id === (todayData[userUids[1]]?.avatarId)) || AVATARS[1];
+        if (rightIconEl) rightIconEl.innerText = p2Av.emoji;
+      } else {
+        if (rightIconEl) rightIconEl.innerText = "📦";
+      }
 
       if (userUids.length === 0) {
-        arenaGrid.innerHTML = `<p class="text-xs text-slate-500 col-span-2 text-center py-8">No submissions yet today. Be the first to hunt!</p>`;
+        arenaGrid.innerHTML = `<div class="col-span-2 p-6 text-center text-xs text-amber-200 border border-dashed border-amber-500/50 rounded-xl bg-cove-teal-header">No entries submitted yet today. Be the first hunter!</div>`;
       } else {
-        userUids.forEach(uid => {
+        userUids.forEach((uid, index) => {
           const entry = todayData[uid];
-          const card = document.createElement("div");
-          card.className = "bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between";
+          const isMyPhoto = (uid === myUid);
+          const cardStyleClass = (index % 2 === 0) ? "card-teal-exact" : "card-gold-exact";
 
-          const commentsArr = entry.comments ? Object.values(entry.comments) : [];
+          const card = document.createElement("div");
+          card.className = `${cardStyleClass} rounded-2xl p-2.5 flex flex-col justify-between shadow-2xl relative space-y-2`;
+
+          const commentsArr = entry.comments ? (Array.isArray(entry.comments) ? entry.comments : Object.values(entry.comments)) : [];
           const ratingsObj = entry.ratings || {};
-          const avgRating = Object.values(ratingsObj).length 
-            ? (Object.values(ratingsObj).reduce((a,b)=>a+b,0) / Object.values(ratingsObj).length).toFixed(1)
-            : "Unrated";
 
           if (entry.defeated) {
             card.innerHTML = `
-              <div>
-                <div class="flex justify-between items-center mb-2">
-                  <span class="font-bold text-rose-400">${entry.authorName}</span>
-                  <span class="text-xs text-slate-400">${entry.uploadedAt}</span>
-                </div>
-                <div class="w-full h-48 bg-rose-950/20 border-2 border-dashed border-rose-900/50 rounded-lg flex flex-col items-center justify-center text-rose-400 p-4 mb-2">
-                  <i data-lucide="flag" class="w-8 h-8 mb-2 opacity-80"></i>
-                  <p class="font-bold text-sm">Admitted Defeat</p>
-                </div>
-                <div class="space-y-1 text-xs border-t border-slate-800 pt-2 max-h-24 overflow-y-auto">
-                  ${commentsArr.map(c => `<div><strong class="text-slate-300">${c.author}:</strong> ${c.text}</div>`).join('')}
-                </div>
+              <div class="flex flex-col items-center text-center space-y-1">
+                <span class="font-bold text-white text-xs tracking-wide uppercase drop-shadow">${entry.authorName}</span>
               </div>
-              <div class="flex gap-2 mt-3 pt-2 border-t border-slate-800">
-                <input type="text" id="comment-${uid}" placeholder="Send comforting words..." class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs w-full text-white focus:outline-none" />
-                <button onclick="addComment('${uid}', 'comment-${uid}')" class="bg-indigo-600 px-3 py-1 rounded text-xs font-semibold">Post</button>
+
+              <div class="h-40 bg-black/40 border-2 border-dashed border-rose-400/60 rounded-xl flex flex-col items-center justify-center text-rose-200">
+                <i data-lucide="flag" class="w-8 h-8 mb-1 opacity-80"></i>
+                <p class="font-bold text-xs">Defeated 🏳️</p>
               </div>
             `;
           } else {
             card.innerHTML = `
-              <div>
-                <div class="flex justify-between items-center mb-2">
-                  <span class="font-bold text-indigo-400">${entry.authorName}</span>
-                  <span class="text-xs text-slate-400">${entry.uploadedAt}</span>
-                </div>
-                <img src="${entry.image}" class="w-full h-48 object-cover rounded-lg mb-2" />
-                <h4 class="font-bold text-white text-sm mb-1">${entry.title}</h4>
-                <p class="text-xs text-emerald-400 mb-3">⚡ Speed: ${formatElapsed(entry.elapsedSeconds)}</p>
-
-                <div class="flex items-center gap-1 mb-3">
-                  <span class="text-xs text-slate-400 mr-1">Rate:</span>
-                  ${[1,2,3,4,5].map(s => `
-                    <button onclick="ratePhoto('${uid}', ${s})" class="text-sm ${ (ratingsObj[currentUser.uid] >= s) ? 'text-amber-400' : 'text-slate-600' }">★</button>
-                  `).join('')}
-                  <span class="text-xs text-slate-400 ml-auto">Avg: ${avgRating}★</span>
-                </div>
-
-                <div class="space-y-1 text-xs border-t border-slate-800 pt-2 max-h-24 overflow-y-auto">
-                  ${commentsArr.map(c => `<div><strong class="text-slate-300">${c.author}:</strong> ${c.text}</div>`).join('')}
-                </div>
+              <div class="flex flex-col items-center text-center space-y-0.5">
+                <span class="font-bold text-white text-xs tracking-wide uppercase drop-shadow">${entry.authorName}</span>
               </div>
 
-              <div class="flex gap-2 mt-3 pt-2 border-t border-slate-800">
-                <input type="text" id="comment-${uid}" placeholder="Add comment..." class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs w-full text-white focus:outline-none" />
-                <button onclick="addComment('${uid}', 'comment-${uid}')" class="bg-indigo-600 px-3 py-1 rounded text-xs font-semibold">Post</button>
+              <div class="rounded-xl overflow-hidden border border-black/30 shadow-md">
+                <img src="${entry.image}" class="w-full h-36 object-cover" />
               </div>
+
+              <div class="text-center">
+                <span class="badge-purple-ribbon text-[10px] font-extrabold px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 shadow">
+                  FIRST HUNT! ⚡
+                </span>
+              </div>
+
+              <!-- Rating Star Bar -->
+              <div class="text-center">
+                ${isMyPhoto ? `
+                  <span class="text-[9px] font-bold text-amber-100/90 uppercase tracking-wider block mb-0.5">Your Submission</span>
+                  <div class="flex justify-center gap-0.5 text-amber-300 text-xs opacity-70">
+                    ${[1,2,3,4,5].map(s => `<span>${ (ratingsObj[myUid] >= s) ? '★' : '☆' }</span>`).join('')}
+                  </div>
+                ` : `
+                  <div class="flex justify-center gap-0.5 text-amber-300 text-sm">
+                    ${[1,2,3,4,5].map(s => `
+                      <button onclick="ratePhoto('${uid}', ${s})" class="transition ${ (ratingsObj[myUid] >= s) ? 'text-amber-300 scale-110' : 'text-black/40' }">★</button>
+                    `).join('')}
+                  </div>
+                `}
+              </div>
+
+              <!-- Comment Pill -->
+              <div class="bg-white text-slate-800 rounded-full px-2.5 py-1 text-[10px] flex items-center gap-1.5 shadow-md">
+                <div class="w-4 h-4 rounded-full bg-indigo-500 text-white flex items-center justify-center text-[9px] shrink-0 font-bold">👤</div>
+                <input type="text" id="comment-${uid}" placeholder="User comment..." class="bg-transparent text-slate-800 text-[10px] w-full focus:outline-none font-medium" />
+                <button onclick="addComment('${uid}', 'comment-${uid}')" class="text-xs text-indigo-600 font-bold">↵</button>
+              </div>
+
+              <!-- Comment List -->
+              ${commentsArr.length > 0 ? `
+                <div class="space-y-0.5 text-[9px] text-slate-100 bg-black/20 rounded-lg p-1.5 max-h-16 overflow-y-auto">
+                  ${commentsArr.map(c => `<div><strong class="text-amber-200">${c.author}:</strong> ${c.text}</div>`).join('')}
+                </div>
+              ` : ''}
             `;
           }
           arenaGrid.appendChild(card);
         });
+      }
+
+      // 2. Render Historic Maps Timeline
+      const mapsList = document.getElementById("historicLogsList");
+      if (mapsList) {
+        const pastDates = Object.keys(dbData).filter(d => d !== todayKey).sort().reverse();
+        if (pastDates.length === 0) {
+          mapsList.innerHTML = `<p class="text-xs text-amber-200/70 text-center py-4">No past hunts completed yet. Check back tomorrow!</p>`;
+        } else {
+          mapsList.innerHTML = pastDates.map(dateKey => {
+            const dayData = dbData[dateKey];
+            const uids = Object.keys(dayData || {});
+            const p1 = dayData[uids[0]];
+            const p2 = dayData[uids[1]];
+            const res = determineWinner(p1, p2);
+
+            return `
+              <div onclick="openHistoricModal('${dateKey}')" class="relative group cursor-pointer transition hover:scale-[1.01]">
+                <div class="absolute -left-[27px] top-1.5 w-6 h-6 rounded-full bg-amber-500 border-2 border-amber-200 text-amber-950 font-pirate font-black text-xs flex items-center justify-center shadow-md">
+                  ❌
+                </div>
+                
+                <div class="bg-cove-dark border border-amber-600/50 hover:border-amber-400 rounded-xl p-3 space-y-2 shadow-lg">
+                  <div class="flex items-center justify-between border-b border-amber-900/40 pb-1.5">
+                    <span class="text-[11px] font-bold text-amber-300 font-pirate">${dateKey}</span>
+                    <span class="text-[10px] font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-700/60">
+                      ⭐ Star Winner: ${res.starWinner}
+                    </span>
+                  </div>
+
+                  <div class="flex items-center justify-between pt-1 text-xs">
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-bold ${res.isDraw ? 'text-amber-400' : 'text-amber-200'}">
+                        ${res.isDraw ? '🤝 Result: Draw!' : `👑 Winner: ${res.overallWinner}`}
+                      </span>
+                    </div>
+                    <span class="text-[10px] text-amber-300 font-mono font-semibold">
+                      Tap for photos 🔍
+                    </span>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      // 3. Render Leaderboard
+      const lbList = document.getElementById("leaderboardList");
+      if (lbList) {
+        lbList.innerHTML = `
+          <div class="bg-cove-dark border border-amber-500/60 rounded-xl p-3.5 flex items-center justify-between shadow-md">
+            <div class="flex items-center gap-3">
+              <span class="text-2xl">${selectedAvObj.emoji}</span>
+              <div>
+                <h4 class="font-bold text-gold text-sm">${localProfile.alias}</h4>
+                <p class="text-[10px] text-slate-300">Active Hunter</p>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="font-pirate font-bold text-lg text-amber-400">Connected</span>
+            </div>
+          </div>
+        `;
       }
 
       lucide.createIcons();
