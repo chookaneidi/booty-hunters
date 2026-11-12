@@ -330,6 +330,15 @@
             Save Moniker & Avatar ⚔️
           </button>
 
+          <div class="pt-3 border-t border-amber-900/50 space-y-2">
+            <button onclick="requestNotificationPermission()" id="notifBtn" class="w-full bg-cove-dark hover:bg-slate-800 border border-amber-500/50 text-amber-300 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+              <i data-lucide="bell" class="w-4 h-4"></i> Enable Phone Alerts 🔔
+            </button>
+            <p class="text-[10px] text-slate-300 text-center leading-tight">
+              Notifies you when your partner uploads or at 8:00 AM while the tab is open.
+            </p>
+          </div>
+
           <div class="pt-3 border-t border-amber-900/50 text-center">
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
@@ -428,10 +437,16 @@
     };
     let activeTab = "target";
     let dbData = {};
+    let isInitialLoad = true;
+    let lastNotifiedDate = null;
 
     // INITIALIZATION & AUTH LISTENER
     window.onload = function() {
       renderAvatarPicker();
+      updateNotifButtonUI();
+      
+      // Check every 30 seconds if 8:00 AM has arrived for a new target alert
+      setInterval(checkEightAMAlert, 30000);
       
       auth.onAuthStateChanged(user => {
         if (user) {
@@ -440,65 +455,106 @@
           document.getElementById("authScreen").classList.add("hidden");
           document.getElementById("appScreen").classList.remove("hidden");
           
+          const aliasInput = document.getElementById("profileAliasInput");
+          if (aliasInput) aliasInput.value = localProfile.alias;
+          
           // Fetch saved profile if available
           db.ref(`users/${user.uid}`).once('value', snap => {
             if (snap.exists()) {
               localProfile = { ...localProfile, ...snap.val() };
-              const aliasInput = document.getElementById("profileAliasInput");
               if (aliasInput) aliasInput.value = localProfile.alias;
               renderAvatarPicker();
             }
           });
 
-          // Listen for DB sync
+          // Listen for DB sync & partner upload alerts
           db.ref("booty_hunters").on("value", snapshot => {
-            dbData = snapshot.val() || {};
+            const newData = snapshot.val() || {};
+            
+            if (!isInitialLoad) {
+              checkPartnerUploadAlert(dbData, newData);
+            }
+            
+            dbData = newData;
+            isInitialLoad = false;
             render();
           });
         } else {
           currentUser = null;
+          isInitialLoad = true;
           document.getElementById("authScreen").classList.remove("hidden");
           document.getElementById("appScreen").classList.add("hidden");
         }
       });
     };
 
-    // PROFILE, NAVIGATION & AUTH FUNCTIONS
-    function switchTab(tabId) {
-      activeTab = tabId;
-      const tabs = ['target', 'submit', 'maps', 'leaderboard', 'profile'];
-      tabs.forEach(t => {
-        const viewEl = document.getElementById(`view${t.charAt(0).toUpperCase() + t.slice(1)}`);
-        const btnEl = document.getElementById(`tabBtn${t.charAt(0).toUpperCase() + t.slice(1)}`);
-        if (viewEl) {
-          if (t === tabId) viewEl.classList.remove('hidden');
-          else viewEl.classList.add('hidden');
-        }
-        if (btnEl) {
-          if (t === tabId) {
-            btnEl.classList.add('border-amber-400', 'bg-amber-500/40');
-          } else {
-            btnEl.classList.remove('border-amber-400', 'bg-amber-500/40');
-          }
-        }
+    // AUTHENTICATION HANDLERS
+    function handleLogin() {
+      const email = document.getElementById("authEmail").value.trim();
+      const pass = document.getElementById("authPassword").value;
+      const errEl = document.getElementById("authError");
+      errEl.classList.add("hidden");
+
+      auth.signInWithEmailAndPassword(email, pass).catch(err => {
+        errEl.innerText = err.message;
+        errEl.classList.remove("hidden");
       });
-      window.scrollTo(0, 0);
-      render();
     }
 
+    function handleSignUp() {
+      const email = document.getElementById("authEmail").value.trim();
+      const pass = document.getElementById("authPassword").value;
+      const errEl = document.getElementById("authError");
+      errEl.classList.add("hidden");
+
+      auth.createUserWithEmailAndPassword(email, pass).catch(err => {
+        errEl.innerText = err.message;
+        errEl.classList.remove("hidden");
+      });
+    }
+
+    function handleLogout() {
+      auth.signOut();
+    }
+
+    // TAB NAVIGATION
+    function switchTab(tabName) {
+      activeTab = tabName;
+      const views = {
+        target: "viewTarget",
+        submit: "viewSubmit",
+        maps: "viewMaps",
+        leaderboard: "viewLeaderboard",
+        profile: "viewProfile"
+      };
+
+      Object.keys(views).forEach(key => {
+        const el = document.getElementById(views[key]);
+        if (el) {
+          if (key === tabName) el.classList.remove("hidden");
+          else el.classList.add("hidden");
+        }
+      });
+    }
+
+    // PROFILE & AVATAR PICKER
     function renderAvatarPicker() {
       const grid = document.getElementById("avatarGrid");
       if (!grid) return;
-      grid.innerHTML = AVATARS.map(av => `
-        <button onclick="selectAvatar('${av.id}')" id="av-btn-${av.id}" class="bg-cove-dark border-2 ${localProfile.avatarId === av.id ? 'border-amber-400 bg-amber-500/20' : 'border-amber-700/50'} rounded-xl p-3 flex flex-col items-center justify-center gap-1 hover:border-amber-400 transition">
-          <span class="text-3xl mb-1">${av.emoji}</span>
-          <span class="text-[11px] font-bold text-amber-200 text-center leading-tight">${av.name}</span>
-        </button>
-      `).join('');
+
+      grid.innerHTML = AVATARS.map(av => {
+        const isSelected = av.id === localProfile.avatarId;
+        return `
+          <button type="button" onclick="selectAvatar('${av.id}')" class="p-2.5 rounded-xl border-2 transition flex flex-col items-center justify-center gap-1 ${isSelected ? 'bg-amber-500/20 border-amber-400 shadow-lg scale-[1.02]' : 'bg-cove-dark border-amber-500/30 hover:border-amber-400/70'}">
+            <span class="text-2xl">${av.emoji}</span>
+            <span class="text-[11px] font-bold ${isSelected ? 'text-amber-300' : 'text-slate-200'}">${av.name}</span>
+          </button>
+        `;
+      }).join('');
     }
 
-    function selectAvatar(id) {
-      localProfile.avatarId = id;
+    function selectAvatar(avatarId) {
+      localProfile.avatarId = avatarId;
       renderAvatarPicker();
     }
 
@@ -507,36 +563,83 @@
       if (aliasInput && aliasInput.value.trim()) {
         localProfile.alias = aliasInput.value.trim();
       }
+
       if (currentUser) {
         db.ref(`users/${currentUser.uid}`).set({
           alias: localProfile.alias,
           avatarId: localProfile.avatarId
         });
+
+        // Update today's entry name & icon if already uploaded
+        const todayKey = new Date().toISOString().split('T')[0];
+        if (dbData[todayKey] && dbData[todayKey][currentUser.uid]) {
+          db.ref(`booty_hunters/${todayKey}/${currentUser.uid}`).update({
+            authorName: localProfile.alias,
+            avatarId: localProfile.avatarId
+          });
+        }
       }
+
+      render();
       switchTab("target");
     }
 
-    function handleLogin() {
-      const email = document.getElementById("authEmail").value;
-      const pass = document.getElementById("authPassword").value;
-      auth.signInWithEmailAndPassword(email, pass).catch(err => showAuthError(err.message));
+    // NOTIFICATION HELPERS
+    function requestNotificationPermission() {
+      if (!("Notification" in window)) {
+        updateNotifButtonUI("Not supported on this browser");
+        return;
+      }
+      Notification.requestPermission().then(permission => {
+        updateNotifButtonUI();
+        if (permission === "granted") {
+          new Notification("Booty Hunters 🏴‍☠️", {
+            body: "Alerts enabled! You'll get notified when new booty is uploaded."
+          });
+        }
+      });
     }
 
-    function handleSignUp() {
-      const email = document.getElementById("authEmail").value;
-      const pass = document.getElementById("authPassword").value;
-      auth.createUserWithEmailAndPassword(email, pass).catch(err => showAuthError(err.message));
+    function updateNotifButtonUI(customText) {
+      const btn = document.getElementById("notifBtn");
+      if (!btn) return;
+      if (customText) {
+        btn.innerText = customText;
+        return;
+      }
+      if ("Notification" in window && Notification.permission === "granted") {
+        btn.innerHTML = `<i data-lucide="bell-ring" class="w-4 h-4 text-emerald-400"></i> Phone Alerts Active ✅`;
+        btn.classList.add("border-emerald-400/60", "text-emerald-300");
+        lucide.createIcons();
+      }
     }
 
-    function handleLogout() {
-      auth.signOut();
+    function checkPartnerUploadAlert(oldData, newData) {
+      if (!("Notification" in window) || Notification.permission !== "granted" || !currentUser) return;
+      const todayKey = new Date().toISOString().split('T')[0];
+      const oldToday = oldData[todayKey] || {};
+      const newToday = newData[todayKey] || {};
+
+      Object.keys(newToday).forEach(uid => {
+        if (uid !== currentUser.uid && !oldToday[uid]) {
+          const entry = newToday[uid];
+          const msg = entry.defeated 
+            ? `${entry.authorName} waved the white flag today! 🏳️`
+            : `${entry.authorName} just uploaded "${entry.title}"! Rate it now ⭐`;
+          new Notification("New Booty Spotted! 🏴‍☠️", { body: msg });
+        }
+      });
     }
 
-    function showAuthError(msg) {
-      const errEl = document.getElementById("authError");
-      if (errEl) {
-        errEl.innerText = msg;
-        errEl.classList.remove("hidden");
+    function checkEightAMAlert() {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      const now = new Date();
+      const todayKey = now.toISOString().split('T')[0];
+      if (now.getHours() === 8 && now.getMinutes() === 0 && lastNotifiedDate !== todayKey) {
+        lastNotifiedDate = todayKey;
+        new Notification("8:00 AM - New Booty Target! 📜", {
+          body: `Today's target: "${getTodayPrompt()}"`
+        });
       }
     }
 
@@ -966,6 +1069,7 @@
                 avatarId: entry.avatarId || "cannonballs",
                 wins: 0,
                 totalStars: 0,
+                ratingCount: 0,
                 hunts: 0,
                 totalSeconds: 0
               };
@@ -982,6 +1086,7 @@
             if (entry.ratings) {
               Object.values(entry.ratings).forEach(r => {
                 stats[uid].totalStars += Number(r);
+                stats[uid].ratingCount += 1;
               });
             }
           });
@@ -1006,21 +1111,28 @@
             avatarId: localProfile.avatarId,
             wins: 0,
             totalStars: 0,
+            ratingCount: 0,
             hunts: 0,
             totalSeconds: 0
           };
         }
 
-        // Sort players by Wins first, then Total Stars
+        // Compute average stars for each player
+        Object.values(stats).forEach(p => {
+          p.avgStars = p.ratingCount > 0 ? (p.totalStars / p.ratingCount) : 0;
+        });
+
+        // Sort players by Wins first, then Average Stars
         const sortedPlayers = Object.values(stats).sort((a, b) => {
           if (b.wins !== a.wins) return b.wins - a.wins;
-          return b.totalStars - a.totalStars;
+          return b.avgStars - a.avgStars;
         });
 
         lbList.innerHTML = sortedPlayers.map((player, idx) => {
           const av = AVATARS.find(a => a.id === player.avatarId) || AVATARS[0];
           const avgSecs = player.hunts > 0 ? Math.round(player.totalSeconds / player.hunts) : null;
           const rankBadge = idx === 0 ? "👑" : `#${idx + 1}`;
+          const avgStarText = player.ratingCount > 0 ? `${player.avgStars.toFixed(1)} ★ Avg` : "No ratings";
 
           return `
             <div class="bg-cove-dark border ${idx === 0 ? 'border-amber-400' : 'border-amber-500/40'} rounded-xl p-3.5 flex items-center justify-between shadow-md">
@@ -1038,7 +1150,7 @@
               </div>
               <div class="text-right">
                 <span class="font-pirate font-bold text-lg text-amber-400 block leading-none">${player.wins} Wins</span>
-                <span class="text-[11px] text-amber-200 font-semibold">${player.totalStars} ★ Total</span>
+                <span class="text-[11px] text-amber-200 font-semibold">${avgStarText}</span>
               </div>
             </div>
           `;
