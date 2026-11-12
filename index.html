@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#08434d" />
   <title>Booty Hunters - Pirate Cove Bounty</title>
   
   <!-- Tailwind CSS -->
@@ -167,6 +170,18 @@
   <!-- APP CONTAINER -->
   <div id="appScreen" class="w-full max-w-md hidden flex flex-col min-h-screen bg-cove-purple-body shadow-2xl border-x-2 border-amber-500/30 relative">
     
+    <!-- IN-APP TOAST NOTIFICATION BANNER -->
+    <div id="inAppToast" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-sm bg-amber-500 text-amber-950 border-2 border-amber-200 rounded-2xl p-3 shadow-2xl flex items-center justify-between gap-3 transition-all duration-300 opacity-0 pointer-events-none">
+      <div class="flex items-center gap-2.5">
+        <span class="text-xl">🔔</span>
+        <div>
+          <p id="toastTitle" class="font-pirate font-black text-xs uppercase tracking-wide">Ahoy!</p>
+          <p id="toastBody" class="text-[11px] font-semibold leading-tight">New booty spotted!</p>
+        </div>
+      </div>
+      <button onclick="hideToast()" class="text-amber-950/70 hover:text-amber-950 font-bold text-xs px-1.5">✕</button>
+    </div>
+
     <!-- Top Header Navigation -->
     <header class="bg-cove-teal-header border-b-2 border-amber-500/80 sticky top-0 z-30 py-3 px-4 shadow-xl">
       <div class="flex justify-between items-center">
@@ -231,7 +246,18 @@
             SUBMIT YOUR BOOTY
           </div>
           
-          <div class="space-y-3 text-left pt-1">
+          <!-- Locked State Banner (Shown after submitting or admitting defeat) -->
+          <div id="submitLockedBanner" class="hidden bg-cove-dark border border-amber-500/50 rounded-xl p-5 space-y-2 text-center">
+            <span class="text-3xl block">🔒</span>
+            <h3 class="font-pirate font-bold text-amber-300 text-sm">Today's Action Locked</h3>
+            <p id="submitLockedMsg" class="text-xs text-slate-200">You have already locked in your entry for today's hunt!</p>
+            <button onclick="switchTab('target')" class="btn-gold px-4 py-2 rounded-xl text-xs font-extrabold mt-2 inline-block">
+              View Showdown ⚔️
+            </button>
+          </div>
+
+          <!-- Active Upload Form -->
+          <div id="submitFormContainer" class="space-y-3 text-left pt-1">
             <div>
               <label class="block text-[11px] font-semibold text-slate-200 mb-1">Photo Title / Caption</label>
               <input type="text" id="photoTitle" placeholder="e.g. Masterpiece in the wild..." class="w-full bg-cove-purple-body border border-amber-500/50 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-amber-400" />
@@ -335,7 +361,7 @@
               <i data-lucide="bell" class="w-4 h-4"></i> Enable Phone Alerts 🔔
             </button>
             <p class="text-[10px] text-slate-300 text-center leading-tight">
-              Notifies you when your partner uploads or at 8:00 AM while the tab is open.
+              Tip: On iPhone/Android, tap Browser Menu → <strong>Add to Home Screen</strong> for full app & alert support!
             </p>
           </div>
 
@@ -439,6 +465,7 @@
     let dbData = {};
     let isInitialLoad = true;
     let lastNotifiedDate = null;
+    let inAppAlertsEnabled = localStorage.getItem("bh_alerts") === "true";
 
     // INITIALIZATION & AUTH LISTENER
     window.onload = function() {
@@ -585,37 +612,81 @@
     }
 
     // NOTIFICATION HELPERS
-    function requestNotificationPermission() {
-      if (!("Notification" in window)) {
-        updateNotifButtonUI("Not supported on this browser");
-        return;
-      }
-      Notification.requestPermission().then(permission => {
-        updateNotifButtonUI();
-        if (permission === "granted") {
-          new Notification("Booty Hunters 🏴‍☠️", {
-            body: "Alerts enabled! You'll get notified when new booty is uploaded."
-          });
-        }
-      });
+    function playPirateChime() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+        osc.frequency.setValueAtTime(880, ctx.currentTime + 0.12); // A5
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.45);
+      } catch (e) {}
     }
 
-    function updateNotifButtonUI(customText) {
+    function showInAppToast(title, body) {
+      const toast = document.getElementById("inAppToast");
+      if (!toast) return;
+      document.getElementById("toastTitle").innerText = title;
+      document.getElementById("toastBody").innerText = body;
+      toast.classList.remove("opacity-0", "pointer-events-none");
+      playPirateChime();
+      setTimeout(hideToast, 6000);
+    }
+
+    function hideToast() {
+      const toast = document.getElementById("inAppToast");
+      if (toast) toast.classList.add("opacity-0", "pointer-events-none");
+    }
+
+    function triggerAlert(title, body) {
+      showInAppToast(title, body);
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification(title, { body });
+        } catch (e) {}
+      }
+    }
+
+    function requestNotificationPermission() {
+      inAppAlertsEnabled = true;
+      localStorage.setItem("bh_alerts", "true");
+
+      if ("Notification" in window && typeof Notification.requestPermission === "function") {
+        Notification.requestPermission().then(() => {
+          updateNotifButtonUI();
+          triggerAlert("Booty Hunters 🏴‍☠️", "Alerts enabled! You'll be notified on uploads & 8:00 AM.");
+        }).catch(() => {
+          updateNotifButtonUI();
+          triggerAlert("Booty Hunters 🏴‍☠️", "In-App Bell & Banner Alerts enabled!");
+        });
+      } else {
+        // Fallback for mobile Chrome / iOS Safari without standalone PWA mode
+        updateNotifButtonUI();
+        triggerAlert("Booty Hunters 🏴‍☠️", "In-App Bell & Banner Alerts enabled!");
+      }
+    }
+
+    function updateNotifButtonUI() {
       const btn = document.getElementById("notifBtn");
       if (!btn) return;
-      if (customText) {
-        btn.innerText = customText;
-        return;
-      }
-      if ("Notification" in window && Notification.permission === "granted") {
-        btn.innerHTML = `<i data-lucide="bell-ring" class="w-4 h-4 text-emerald-400"></i> Phone Alerts Active ✅`;
+      const sysGranted = ("Notification" in window && Notification.permission === "granted");
+      if (sysGranted || inAppAlertsEnabled) {
+        btn.innerHTML = `<i data-lucide="bell-ring" class="w-4 h-4 text-emerald-400"></i> ${sysGranted ? 'System & In-App Alerts Active ✅' : 'In-App Bell Alerts Active ✅'}`;
         btn.classList.add("border-emerald-400/60", "text-emerald-300");
         lucide.createIcons();
       }
     }
 
     function checkPartnerUploadAlert(oldData, newData) {
-      if (!("Notification" in window) || Notification.permission !== "granted" || !currentUser) return;
+      const sysGranted = ("Notification" in window && Notification.permission === "granted");
+      if ((!sysGranted && !inAppAlertsEnabled) || !currentUser) return;
+      
       const todayKey = new Date().toISOString().split('T')[0];
       const oldToday = oldData[todayKey] || {};
       const newToday = newData[todayKey] || {};
@@ -625,21 +696,21 @@
           const entry = newToday[uid];
           const msg = entry.defeated 
             ? `${entry.authorName} waved the white flag today! 🏳️`
-            : `${entry.authorName} just uploaded "${entry.title}"! Rate it now ⭐`;
-          new Notification("New Booty Spotted! 🏴‍☠️", { body: msg });
+            : `${entry.authorName} uploaded "${entry.title}"! Rate it now ⭐`;
+          triggerAlert("New Booty Spotted! 🏴‍☠️", msg);
         }
       });
     }
 
     function checkEightAMAlert() {
-      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      const sysGranted = ("Notification" in window && Notification.permission === "granted");
+      if (!sysGranted && !inAppAlertsEnabled) return;
+
       const now = new Date();
       const todayKey = now.toISOString().split('T')[0];
       if (now.getHours() === 8 && now.getMinutes() === 0 && lastNotifiedDate !== todayKey) {
         lastNotifiedDate = todayKey;
-        new Notification("8:00 AM - New Booty Target! 📜", {
-          body: `Today's target: "${getTodayPrompt()}"`
-        });
+        triggerAlert("8:00 AM - New Target! 📜", `Today's target: "${getTodayPrompt()}"`);
       }
     }
 
@@ -651,52 +722,45 @@
     }
 
     function handleUpload() {
+      const todayKey = new Date().toISOString().split('T')[0];
+      if (currentUser && dbData[todayKey] && dbData[todayKey][currentUser.uid]) {
+        showInAppToast("Already Locked 🔒", "You have already submitted or admitted defeat today!");
+        return;
+      }
+
       const titleInput = document.getElementById("photoTitle");
       const fileInput = document.getElementById("photoInput");
 
       if (!titleInput.value || !fileInput.files[0]) {
-        alert("Please enter a title and select a photo!");
+        showInAppToast("Missing Info ⚠️", "Please enter a title and select a photo!");
         return;
       }
 
       const file = fileInput.files[0];
       const reader = new FileReader();
 
-      reader.onload = function(e) {
+      reader.onload = function(event) {
         const img = new Image();
         img.onload = function() {
-          // Automatic Image Compression (Max width/height 800px, JPEG quality 0.7)
+          // Compress image via canvas so it stays lightweight (~100KB) for Firebase
           const canvas = document.createElement("canvas");
-          let width = img.width;
-          let height = img.height;
-          const maxDim = 800;
-
-          if (width > height && width > maxDim) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-
-          canvas.width = width;
-          canvas.height = height;
+          const MAX_WIDTH = 800;
+          const scaleSize = img.width > MAX_WIDTH ? (MAX_WIDTH / img.width) : 1;
+          canvas.width = img.width * scaleSize;
+          canvas.height = img.height * scaleSize;
 
           const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, width, height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.72);
 
-          // Compress to JPEG with 70% quality (typically ~60KB - 120KB)
-          const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
-
-          const todayKey = new Date().toISOString().split('T')[0];
           const userKey = currentUser.uid;
           const userName = localProfile.alias || currentUser.email.split('@')[0];
 
           db.ref(`booty_hunters/${todayKey}/${userKey}`).set({
             authorName: userName,
             avatarId: localProfile.avatarId,
-            title: titleInput.value,
-            image: compressedBase64,
+            title: titleInput.value.trim(),
+            image: compressedDataUrl,
             defeated: false,
             uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             elapsedSeconds: getElapsedSince8AM(),
@@ -706,15 +770,22 @@
 
           titleInput.value = "";
           fileInput.value = "";
+          showInAppToast("Booty Uploaded! 🏴‍☠️", "Your photo has been locked in for today's showdown!");
           switchTab("target");
         };
-        img.src = e.target.result;
+        img.src = event.target.result;
       };
+
       reader.readAsDataURL(file);
     }
 
     function handleAdmitDefeat() {
       const todayKey = new Date().toISOString().split('T')[0];
+      if (currentUser && dbData[todayKey] && dbData[todayKey][currentUser.uid]) {
+        showInAppToast("Already Locked 🔒", "You have already submitted or admitted defeat today!");
+        return;
+      }
+
       const userKey = currentUser.uid;
       const userName = localProfile.alias || currentUser.email.split('@')[0];
 
@@ -875,6 +946,23 @@
       const todayKey = new Date().toISOString().split('T')[0];
       const todayData = dbData[todayKey] || {};
       const myUid = currentUser ? currentUser.uid : null;
+
+      // 0. Lock Submit / Admit Defeat form if user already acted today
+      const submitForm = document.getElementById("submitFormContainer");
+      const lockedBanner = document.getElementById("submitLockedBanner");
+      const lockedMsg = document.getElementById("submitLockedMsg");
+      if (submitForm && lockedBanner) {
+        if (myUid && todayData[myUid]) {
+          submitForm.classList.add("hidden");
+          lockedBanner.classList.remove("hidden");
+          lockedMsg.innerText = todayData[myUid].defeated
+            ? "You waved the white flag for today's target. Come back tomorrow at 8:00 AM!"
+            : `You already submitted "${todayData[myUid].title}" for today's hunt!`;
+        } else {
+          submitForm.classList.remove("hidden");
+          lockedBanner.classList.add("hidden");
+        }
+      }
 
       // 1. Render Showdown Arena Cards
       const arenaGrid = document.getElementById("arenaGrid");
