@@ -166,7 +166,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 1.1</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 1.2</p>
     </div>
   </div>
 
@@ -360,7 +360,7 @@
           </button>
 
           <div class="pt-3 border-t border-amber-900/50 space-y-2">
-            <button onclick="requestNotificationPermission()" id="notifBtn" class="w-full bg-cove-dark hover:bg-slate-800 border border-amber-500/50 text-amber-300 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+            <button onclick="toggleAlerts()" id="notifBtn" class="w-full bg-cove-dark hover:bg-slate-800 border border-amber-500/50 text-amber-300 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="bell" class="w-4 h-4"></i> Enable Phone Alerts 🔔
             </button>
             <p class="text-[10px] text-slate-300 text-center leading-tight">
@@ -372,7 +372,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 1.1</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 1.2</p>
           </div>
         </div>
       </div>
@@ -680,6 +680,7 @@
     }
 
     function triggerAlert(title, body) {
+      if (!inAppAlertsEnabled) return;
       showInAppToast(title, body);
       if ("Notification" in window && Notification.permission === "granted") {
         try {
@@ -688,22 +689,30 @@
       }
     }
 
-    function requestNotificationPermission() {
-      inAppAlertsEnabled = true;
-      localStorage.setItem("bh_alerts", "true");
+    function toggleAlerts() {
+      if (inAppAlertsEnabled) {
+        // Turn alerts OFF
+        inAppAlertsEnabled = false;
+        localStorage.setItem("bh_alerts", "false");
+        updateNotifButtonUI();
+        showInAppToast("Alerts Muted 🔕", "Phone & bell alerts are now turned OFF.");
+      } else {
+        // Turn alerts ON
+        inAppAlertsEnabled = true;
+        localStorage.setItem("bh_alerts", "true");
 
-      if ("Notification" in window && typeof Notification.requestPermission === "function") {
-        Notification.requestPermission().then(() => {
-          updateNotifButtonUI();
-          triggerAlert("Booty Hunters 🏴‍☠️", "Alerts enabled! You'll be notified on uploads & 8:00 AM.");
-        }).catch(() => {
+        if ("Notification" in window && typeof Notification.requestPermission === "function") {
+          Notification.requestPermission().then(() => {
+            updateNotifButtonUI();
+            triggerAlert("Booty Hunters 🏴‍☠️", "Alerts enabled! You'll be notified on uploads & 8:00 AM.");
+          }).catch(() => {
+            updateNotifButtonUI();
+            triggerAlert("Booty Hunters 🏴‍☠️", "In-App Bell & Banner Alerts enabled!");
+          });
+        } else {
           updateNotifButtonUI();
           triggerAlert("Booty Hunters 🏴‍☠️", "In-App Bell & Banner Alerts enabled!");
-        });
-      } else {
-        // Fallback for mobile Chrome / iOS Safari without standalone PWA mode
-        updateNotifButtonUI();
-        triggerAlert("Booty Hunters 🏴‍☠️", "In-App Bell & Banner Alerts enabled!");
+        }
       }
     }
 
@@ -711,16 +720,20 @@
       const btn = document.getElementById("notifBtn");
       if (!btn) return;
       const sysGranted = ("Notification" in window && Notification.permission === "granted");
-      if (sysGranted || inAppAlertsEnabled) {
-        btn.innerHTML = `<i data-lucide="bell-ring" class="w-4 h-4 text-emerald-400"></i> ${sysGranted ? 'System & In-App Alerts Active ✅' : 'In-App Bell Alerts Active ✅'}`;
+      if (inAppAlertsEnabled) {
+        btn.innerHTML = `<i data-lucide="bell-ring" class="w-4 h-4 text-emerald-400"></i> ${sysGranted ? 'Alerts Active (Tap to Disable) ✅' : 'Bell Alerts Active (Tap to Disable) ✅'}`;
         btn.classList.add("border-emerald-400/60", "text-emerald-300");
-        lucide.createIcons();
+        btn.classList.remove("border-amber-500/50", "text-amber-300");
+      } else {
+        btn.innerHTML = `<i data-lucide="bell-off" class="w-4 h-4 text-amber-400"></i> Enable Phone Alerts 🔔`;
+        btn.classList.remove("border-emerald-400/60", "text-emerald-300");
+        btn.classList.add("border-amber-500/50", "text-amber-300");
       }
+      lucide.createIcons();
     }
 
     function checkPartnerUploadAlert(oldData, newData) {
-      const sysGranted = ("Notification" in window && Notification.permission === "granted");
-      if ((!sysGranted && !inAppAlertsEnabled) || !currentUser) return;
+      if (!inAppAlertsEnabled || !currentUser) return;
       
       const todayKey = new Date().toISOString().split('T')[0];
       const oldToday = oldData[todayKey] || {};
@@ -738,8 +751,7 @@
     }
 
     function checkEightAMAlert() {
-      const sysGranted = ("Notification" in window && Notification.permission === "granted");
-      if (!sysGranted && !inAppAlertsEnabled) return;
+      if (!inAppAlertsEnabled) return;
 
       const now = new Date();
       const todayKey = now.toISOString().split('T')[0];
