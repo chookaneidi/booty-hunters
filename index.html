@@ -164,7 +164,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 1.6</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 1.7</p>
     </div>
   </div>
 
@@ -380,7 +380,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 1.6</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 1.7</p>
           </div>
         </div>
       </div>
@@ -797,20 +797,20 @@
       todayKey = getHuntDateKey();
       document.getElementById("todayPromptText").textContent = `"${getPromptForDate(todayKey)}"`;
 
-      // Listen to all user profiles
-      db.ref("users").on("value", snap => {
-        allUsers = snap.val() || {};
-        if (allUsers[currentUser.uid]) {
+      // Listen directly to the current user's own profile (never overwrites existing data)
+      db.ref("users/" + currentUser.uid).on("value", snap => {
+        const myData = snap.val();
+        if (myData) {
           userProfile = {
-            moniker: allUsers[currentUser.uid].moniker || currentUser.email.split("@")[0],
-            avatar: allUsers[currentUser.uid].avatar || "cannonballs"
+            moniker: myData.moniker || (currentUser.email ? currentUser.email.split("@")[0] : "Pirate Hunter"),
+            avatar: myData.avatar || "cannonballs"
           };
+          allUsers[currentUser.uid] = userProfile;
         } else {
           userProfile = {
             moniker: currentUser.email ? currentUser.email.split("@")[0] : "Pirate Hunter",
             avatar: "cannonballs"
           };
-          db.ref("users/" + currentUser.uid).set(userProfile);
         }
 
         document.getElementById("headerAvatar").textContent = getAvatarEmoji(userProfile.avatar);
@@ -819,9 +819,32 @@
         renderAllViews();
       });
 
+      // Listen to all user profiles for partner moniker & avatar sync
+      db.ref("users").on("value", snap => {
+        const usersVal = snap.val();
+        if (usersVal) {
+          allUsers = { ...allUsers, ...usersVal };
+          renderAllViews();
+        }
+      }, err => {
+        console.warn("Could not read /users root, falling back to hunt records:", err.message);
+      });
+
       // Listen to all hunts (today + historic)
       db.ref("booty_hunters").on("value", snap => {
         const newHunts = snap.val() || {};
+        // Backfill allUsers from hunt entries in case /users root is restricted
+        Object.keys(newHunts).sort().forEach(dKey => {
+          const day = newHunts[dKey] || {};
+          Object.keys(day).forEach(uid => {
+            if (!allUsers[uid]) {
+              allUsers[uid] = {
+                moniker: day[uid].moniker || "Pirate Hunter",
+                avatar: day[uid].avatar || "cannonballs"
+              };
+            }
+          });
+        });
         checkPartnerActivityAndNotify(newHunts);
         allHunts = newHunts;
         renderAllViews();
@@ -916,6 +939,13 @@
         moniker: newMoniker,
         avatar: selectedAvatarTemp
       }).then(() => {
+        // Also update today's entry if already posted so moniker/avatar match everywhere
+        if (allHunts[todayKey] && allHunts[todayKey][currentUser.uid]) {
+          db.ref(`booty_hunters/${todayKey}/${currentUser.uid}`).update({
+            moniker: newMoniker,
+            avatar: selectedAvatarTemp
+          });
+        }
         showInAppToast("Profile Saved ⚓", `Welcome aboard, ${newMoniker}!`);
       });
     }
