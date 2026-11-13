@@ -164,7 +164,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 1.7</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 1.9</p>
     </div>
   </div>
 
@@ -380,7 +380,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 1.7</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 1.9</p>
           </div>
         </div>
       </div>
@@ -793,25 +793,71 @@
     });
 
     // --- FIREBASE REALTIME LISTENERS ---
+    function isGenericName(name) {
+      if (!name) return true;
+      const lower = String(name).trim().toLowerCase();
+      return lower === "pirate" || lower === "pirate hunter" || lower === "waiting hunter" || lower === "champion";
+    }
+
+    function extractRealProfileFromHistory(uid, huntsData, usersData) {
+      let foundName = null;
+      let foundAvatar = null;
+
+      // 1. Check /users node first
+      const uNode = usersData && usersData[uid];
+      if (uNode) {
+        const candidateName = uNode.moniker || uNode.alias || uNode.name;
+        if (!isGenericName(candidateName)) foundName = candidateName;
+        if (uNode.avatar && uNode.avatar !== "cannonballs") foundAvatar = uNode.avatar;
+      }
+
+      // 2. Scan all historic hunt entries & comments for any saved moniker/alias/avatar
+      const dates = Object.keys(huntsData || {}).sort();
+      for (const dKey of dates) {
+        const day = huntsData[dKey] || {};
+        const entry = day[uid];
+        if (entry && typeof entry === "object") {
+          const eName = entry.moniker || entry.alias || entry.userAlias || entry.name;
+          if (!foundName && !isGenericName(eName)) foundName = eName;
+          const eAv = entry.avatar || entry.iconId;
+          if (!foundAvatar && eAv && eAv !== "cannonballs") foundAvatar = eAv;
+        }
+        // Check comments authored by this uid across all entries
+        Object.keys(day).forEach(targetUid => {
+          const targetEntry = day[targetUid];
+          if (targetEntry && targetEntry.comments) {
+            Object.values(targetEntry.comments).forEach(c => {
+              if (c.authorId === uid && !foundName && !isGenericName(c.authorName)) {
+                foundName = c.authorName;
+              }
+            });
+          }
+        });
+      }
+
+      return {
+        moniker: foundName || (uNode && uNode.moniker) || "Pirate Hunter",
+        avatar: foundAvatar || (uNode && uNode.avatar) || "cannonballs"
+      };
+    }
+
     function initAppListeners() {
       todayKey = getHuntDateKey();
-      document.getElementById("todayPromptText").textContent = `"${getPromptForDate(todayKey)}"`;
+      const defaultTodayPrompt = getPromptForDate(todayKey);
+      document.getElementById("todayPromptText").textContent = `"${defaultTodayPrompt}"`;
 
-      // Listen directly to the current user's own profile (never overwrites existing data)
+      // Lock today's prompt into Firebase so future updates never change it
+      db.ref(`booty_hunters/${todayKey}/_prompt`).transaction(curr => curr || defaultTodayPrompt);
+
+      // Listen directly to the current user's own profile
       db.ref("users/" + currentUser.uid).on("value", snap => {
         const myData = snap.val();
         if (myData) {
-          userProfile = {
-            moniker: myData.moniker || (currentUser.email ? currentUser.email.split("@")[0] : "Pirate Hunter"),
-            avatar: myData.avatar || "cannonballs"
-          };
-          allUsers[currentUser.uid] = userProfile;
-        } else {
-          userProfile = {
-            moniker: currentUser.email ? currentUser.email.split("@")[0] : "Pirate Hunter",
-            avatar: "cannonballs"
-          };
+          allUsers[currentUser.uid] = { ...allUsers[currentUser.uid], ...myData };
         }
+        const recovered = extractRealProfileFromHistory(currentUser.uid, allHunts, allUsers);
+        userProfile = recovered;
+        allUsers[currentUser.uid] = recovered;
 
         document.getElementById("headerAvatar").textContent = getAvatarEmoji(userProfile.avatar);
         document.getElementById("profileAliasInput").value = userProfile.moniker;
@@ -821,11 +867,11 @@
 
       // Listen to all user profiles for partner moniker & avatar sync
       db.ref("users").on("value", snap => {
-        const usersVal = snap.val();
-        if (usersVal) {
-          allUsers = { ...allUsers, ...usersVal };
-          renderAllViews();
-        }
+        const usersVal = snap.val() || {};
+        Object.keys(usersVal).forEach(uid => {
+          allUsers[uid] = extractRealProfileFromHistory(uid, allHunts, usersVal);
+        });
+        renderAllViews();
       }, err => {
         console.warn("Could not read /users root, falling back to hunt records:", err.message);
       });
@@ -833,27 +879,50 @@
       // Listen to all hunts (today + historic)
       db.ref("booty_hunters").on("value", snap => {
         const newHunts = snap.val() || {};
-        // Backfill allUsers from hunt entries in case /users root is restricted
-        Object.keys(newHunts).sort().forEach(dKey => {
+
+        // Use saved prompt for today if present
+        if (newHunts[todayKey] && newHunts[todayKey]._prompt) {
+          document.getElementById("todayPromptText").textContent = `"${newHunts[todayKey]._prompt}"`;
+        }
+
+        // Recover & sync real profiles across all UIDs found in hunts
+        const discoveredUids = new Set(Object.keys(allUsers));
+        Object.keys(newHunts).forEach(dKey => {
           const day = newHunts[dKey] || {};
-          Object.keys(day).forEach(uid => {
-            if (!allUsers[uid]) {
-              allUsers[uid] = {
-                moniker: day[uid].moniker || "Pirate Hunter",
-                avatar: day[uid].avatar || "cannonballs"
-              };
-            }
+          Object.keys(day).forEach(key => {
+            if (!key.startsWith("_")) discoveredUids.add(key);
           });
         });
+
+        discoveredUids.forEach(uid => {
+          const recovered = extractRealProfileFromHistory(uid, newHunts, allUsers);
+          allUsers[uid] = recovered;
+          // Auto-heal current user's /users node if it was reset to generic defaults
+          if (currentUser && uid === currentUser.uid && !isGenericName(recovered.moniker)) {
+            db.ref("users/" + uid).update(recovered);
+          }
+        });
+
         checkPartnerActivityAndNotify(newHunts);
         allHunts = newHunts;
         renderAllViews();
       });
     }
 
+    function getPlayerEntriesForDay(dayObj) {
+      const clean = {};
+      Object.keys(dayObj || {}).forEach(k => {
+        if (!k.startsWith("_") && dayObj[k] && typeof dayObj[k] === "object") {
+          clean[k] = dayObj[k];
+        }
+      });
+      return clean;
+    }
+
     function checkPartnerActivityAndNotify(newHunts) {
       if (!currentUser || !newHunts[todayKey]) return;
-      const todayData = newHunts[todayKey];
+      const todayData = getPlayerEntriesForDay(newHunts[todayKey]);
+      const oldTodayData = getPlayerEntriesForDay(allHunts[todayKey]);
       let sigParts = [];
       let alertMsg = null;
 
@@ -862,7 +931,7 @@
         const partnerName = (allUsers[uid] && allUsers[uid].moniker) || entry.moniker || "Your Rival";
         if (uid !== currentUser.uid) {
           sigParts.push(`u:${uid}:${entry.timestamp || ""}:${entry.defeated || ""}`);
-          if (allHunts[todayKey] && !allHunts[todayKey][uid]) {
+          if (allHunts[todayKey] && !oldTodayData[uid]) {
             alertMsg = entry.defeated
               ? `🏳️ ${partnerName} admitted defeat today!`
               : `📸 ${partnerName} just uploaded today's booty!`;
@@ -875,7 +944,7 @@
             const reactStr = c.reactions ? JSON.stringify(c.reactions) : "";
             sigParts.push(`c:${cid}:${c.text}:${reactStr}`);
 
-            const oldEntry = allHunts[todayKey] && allHunts[todayKey][uid];
+            const oldEntry = oldTodayData[uid];
             const oldComment = oldEntry && oldEntry.comments && oldEntry.comments[cid];
 
             if (!oldComment && c.authorId !== currentUser.uid) {
@@ -1233,7 +1302,7 @@
     }
 
     function renderSubmitLockState() {
-      const todayEntries = allHunts[todayKey] || {};
+      const todayEntries = getPlayerEntriesForDay(allHunts[todayKey]);
       const myEntry = currentUser && todayEntries[currentUser.uid];
       const lockBanner = document.getElementById("submitLockedBanner");
       const formBox = document.getElementById("submitFormContainer");
@@ -1252,8 +1321,16 @@
 
     function renderPlayerCard(dateKey, uid, entry, isGoldCard) {
       const liveUser = allUsers[uid] || {};
-      const displayName = liveUser.moniker || entry.moniker || "Pirate";
-      const displayIcon = getAvatarEmoji(liveUser.avatar || entry.avatar);
+      const displayName = (!isGenericName(liveUser.moniker) ? liveUser.moniker : null)
+        || (!isGenericName(entry.moniker) ? entry.moniker : null)
+        || entry.alias
+        || liveUser.moniker
+        || "Pirate";
+      const displayIcon = getAvatarEmoji(
+        (liveUser.avatar && liveUser.avatar !== "cannonballs" ? liveUser.avatar : null)
+        || entry.avatar
+        || liveUser.avatar
+      );
       const cardClass = isGoldCard ? "card-gold-exact" : "card-teal-exact";
       const isMe = currentUser && uid === currentUser.uid;
       const myGivenRating = (entry.ratings && currentUser && entry.ratings[currentUser.uid]) || 0;
@@ -1385,7 +1462,7 @@
     }
 
     function renderShowdown() {
-      const todayEntries = allHunts[todayKey] || {};
+      const todayEntries = getPlayerEntriesForDay(allHunts[todayKey]);
       const userIds = Object.keys(allUsers);
       const entryUids = Object.keys(todayEntries);
 
@@ -1472,7 +1549,7 @@
 
       // Tally wins & average stars across all hunt days
       Object.keys(allHunts).forEach(dateKey => {
-        const dayEntries = allHunts[dateKey] || {};
+        const dayEntries = getPlayerEntriesForDay(allHunts[dateKey]);
         Object.keys(dayEntries).forEach(uid => {
           if (!stats[uid]) {
             stats[uid] = {
@@ -1544,8 +1621,9 @@
       }
 
       listEl.innerHTML = dates.map(dateKey => {
-        const dayEntries = allHunts[dateKey] || {};
-        const promptText = getPromptForDate(dateKey);
+        const rawDay = allHunts[dateKey] || {};
+        const dayEntries = getPlayerEntriesForDay(rawDay);
+        const promptText = rawDay._prompt || getPromptForDate(dateKey);
         const res = determineWinner(dayEntries);
         let statusLabel = "In Progress ⏳";
         if (res.status === "draw") statusLabel = "Draw 🤝";
@@ -1568,15 +1646,17 @@
     }
 
     function openHistoricModal(dateKey) {
-      const dayEntries = allHunts[dateKey] || {};
+      const rawDay = allHunts[dateKey] || {};
+      const dayEntries = getPlayerEntriesForDay(rawDay);
+      const savedPrompt = rawDay._prompt || getPromptForDate(dateKey);
       const uids = Object.keys(dayEntries);
       const cardsHtml = uids.map((uid, idx) => renderPlayerCard(dateKey, uid, dayEntries[uid], idx === 1)).join("");
 
       document.getElementById("historicModalContent").innerHTML = `
         <div class="space-y-3 pt-1">
-          <div class="text-center">
+          <div class="text-center space-y-1">
             <span class="badge-soft-red text-[10px] font-black px-3 py-0.5 rounded-full">${dateKey}</span>
-            <h3 class="font-pirate font-bold text-amber-300 text-base mt-1">"${escapeHtml(getPromptForDate(dateKey))}"</h3>
+            <h3 class="font-pirate font-bold text-amber-300 text-base mt-1">"${escapeHtml(savedPrompt)}"</h3>
           </div>
           <div class="grid grid-cols-2 gap-2.5">
             ${cardsHtml || `<p class="col-span-2 text-center text-xs text-slate-300">No entries recorded.</p>`}
