@@ -164,7 +164,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.0</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.1</p>
     </div>
   </div>
 
@@ -380,7 +380,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.0</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.1</p>
           </div>
         </div>
       </div>
@@ -869,8 +869,17 @@
       const defaultTodayPrompt = getPromptForDate(todayKey);
       document.getElementById("todayPromptText").textContent = `"${defaultTodayPrompt}"`;
 
-      // Lock today's prompt into Firebase so future updates never change it
-      db.ref(`booty_hunters/${todayKey}/_prompt`).transaction(curr => curr || defaultTodayPrompt);
+      // Restore original prompts for the 12th & 13th and lock today's prompt into Firebase
+      const currentMonthPrefix = todayKey.slice(0, 8); // e.g., "2026-11-"
+      const day12Key = `${currentMonthPrefix}12`;
+      const day13Key = `${currentMonthPrefix}13`;
+
+      db.ref(`booty_hunters/${day12Key}/_prompt`).set("Something that fits snugly inside something else");
+      db.ref(`booty_hunters/${day13Key}/_prompt`).set("A vintage or retro treasure");
+
+      if (todayKey !== day12Key && todayKey !== day13Key) {
+        db.ref(`booty_hunters/${todayKey}/_prompt`).transaction(curr => curr || defaultTodayPrompt);
+      }
 
       // Listen directly to the current user's own profile
       db.ref("users/" + currentUser.uid).on("value", snap => {
@@ -1676,17 +1685,7 @@
         <div class="space-y-3 pt-1">
           <div class="text-center space-y-1">
             <span class="badge-soft-red text-[10px] font-black px-3 py-0.5 rounded-full">${dateKey}</span>
-            <div class="flex items-center justify-center gap-1.5 mt-1">
-              <h3 id="historicPromptTitle" class="font-pirate font-bold text-amber-300 text-base">"${escapeHtml(savedPrompt)}"</h3>
-              <button type="button" onclick="toggleHistoricPromptEdit()" class="text-xs text-amber-200 hover:text-white bg-cove-dark px-2 py-0.5 rounded-lg border border-amber-500/40" title="Edit Past Prompt">✏️</button>
-            </div>
-            <div id="historicPromptEditBox" class="hidden pt-1 space-y-1.5">
-              <input type="text" id="historicPromptInput" value="${escapeHtml(savedPrompt)}" class="w-full bg-cove-dark border border-amber-400 rounded-xl px-3 py-1.5 text-xs text-white text-center" />
-              <div class="flex justify-center gap-2">
-                <button type="button" onclick="toggleHistoricPromptEdit()" class="text-[11px] bg-slate-700 text-white px-3 py-1 rounded-lg">Cancel</button>
-                <button type="button" onclick="saveHistoricPrompt('${dateKey}')" class="text-[11px] btn-gold font-bold px-3 py-1 rounded-lg">Save Prompt</button>
-              </div>
-            </div>
+            <h3 id="historicPromptTitle" class="font-pirate font-bold text-amber-300 text-base mt-1">"${escapeHtml(savedPrompt)}"</h3>
           </div>
           <div class="grid grid-cols-2 gap-2.5">
             ${cardsHtml || `<p class="col-span-2 text-center text-xs text-slate-300">No entries recorded.</p>`}
@@ -1695,21 +1694,6 @@
       `;
       document.getElementById("historicModal").classList.remove("hidden");
       if (window.lucide) lucide.createIcons();
-    }
-
-    function toggleHistoricPromptEdit() {
-      const box = document.getElementById("historicPromptEditBox");
-      if (box) box.classList.toggle("hidden");
-    }
-
-    function saveHistoricPrompt(dateKey) {
-      const input = document.getElementById("historicPromptInput");
-      const newPrompt = input ? input.value.trim() : "";
-      if (!newPrompt) return;
-      db.ref(`booty_hunters/${dateKey}/_prompt`).set(newPrompt).then(() => {
-        showInAppToast("Prompt Updated 📜", "Historic target saved!");
-        openHistoricModal(dateKey);
-      });
     }
 
     function closeHistoricModal() {
