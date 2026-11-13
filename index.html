@@ -435,10 +435,10 @@
     // 8 CHEEKY PIRATE AVATAR ICONS (ORIGINAL VERSION 1.1 SET)
     const AVATARS = [
       { id: "cannonballs", icon: "💣", name: "Double Cannonballs" },
-      { id: "chest", icon: "🧰", name: "The Grand Chest" },
+      { id: "chest", icon: "📦", name: "The Grand Chest" },
       { id: "spyglass", icon: "🔭", name: "Peep Spyglass" },
       { id: "peach", icon: "🍑", name: "The Sailor's Peach" },
-      { id: "hook", icon: "🪝", name: "Siren's Hook" },
+      { id: "hook", icon: "🧜‍♀️", name: "Siren's Hook" },
       { id: "cracker", icon: "🍪", name: "Polly's Cracker" },
       { id: "jolly", icon: "🏴‍☠️", name: "Jolly Roger" },
       { id: "doubloons", icon: "💰", name: "Golden Doubloons" }
@@ -847,8 +847,8 @@
       const cUid = c.authorId || c.uid || c.userId;
       const liveUser = (cUid && allUsers[cUid]) || {};
       const candidates = [
-        liveUser.moniker,
         c.authorName,
+        liveUser.moniker,
         c.moniker,
         c.alias,
         c.userName
@@ -856,9 +856,8 @@
       for (const name of candidates) {
         if (!isGenericName(name)) return { name, avatar: liveUser.avatar || "cannonballs", uid: cUid };
       }
-      // Fallback: if there are only 2 players and cUid isn't set, match by non-generic name if any
       return {
-        name: liveUser.moniker || c.authorName || "Crewmate",
+        name: c.authorName || liveUser.moniker || "Pirate Hunter",
         avatar: liveUser.avatar || "cannonballs",
         uid: cUid
       };
@@ -869,13 +868,14 @@
       const defaultTodayPrompt = getPromptForDate(todayKey);
       document.getElementById("todayPromptText").textContent = `"${defaultTodayPrompt}"`;
 
-      // Restore original prompts for the 12th & 13th and lock today's prompt into Firebase
+      // Correctly map 12th and 13th to exact PROMPTS list indices
       const currentMonthPrefix = todayKey.slice(0, 8); // e.g., "2026-11-"
       const day12Key = `${currentMonthPrefix}12`;
       const day13Key = `${currentMonthPrefix}13`;
 
-      db.ref(`booty_hunters/${day12Key}/_prompt`).set("Something that fits snugly inside something else");
-      db.ref(`booty_hunters/${day13Key}/_prompt`).set("A vintage or retro treasure");
+      // Index matching from 50 list: e.g. prompt for 12th and 13th from hash algorithm or exact index
+      db.ref(`booty_hunters/${day12Key}/_prompt`).set(getPromptForDate(day12Key));
+      db.ref(`booty_hunters/${day13Key}/_prompt`).set(getPromptForDate(day13Key));
 
       if (todayKey !== day12Key && todayKey !== day13Key) {
         db.ref(`booty_hunters/${todayKey}/_prompt`).transaction(curr => curr || defaultTodayPrompt);
@@ -1481,7 +1481,7 @@
         <div class="space-y-1.5 pt-1 border-t border-white/20">
           <div class="space-y-1.5 max-h-36 overflow-y-auto">${listHtml}</div>
           <div class="flex gap-1">
-            <input type="text" id="${inputId}" placeholder="Add banter..." class="w-full bg-slate-950/60 border border-white/20 rounded-lg px-2 py-1 text-[11px] text-white placeholder-white/50 focus:outline-none focus:border-amber-300" />
+            <input type="text" id="${inputId}" placeholder="Add a comment..." class="w-full bg-slate-950/60 border border-white/20 rounded-lg px-2 py-1 text-[11px] text-white placeholder-white/50 focus:outline-none focus:border-amber-300" />
             <button type="button" onclick="postComment('${dateKey}', '${targetUid}', '${inputId}')" class="bg-amber-400 hover:bg-amber-300 text-amber-950 font-black px-2 py-1 rounded-lg text-[10px]">
               Send
             </button>
@@ -1491,204 +1491,106 @@
     }
 
     function renderShowdown() {
-      const todayEntries = getPlayerEntriesForDay(allHunts[todayKey]);
-      const userIds = Object.keys(allUsers);
-      const entryUids = Object.keys(todayEntries);
-
-      // Combine known users + any entry uids so both player slots always show
-      const slots = Array.from(new Set([...userIds, ...entryUids])).slice(0, 2);
-
-      // Update showdown header icons dynamically from live user profiles
-      const leftUser = slots[0] ? allUsers[slots[0]] : null;
-      const rightUser = slots[1] ? allUsers[slots[1]] : null;
-      document.getElementById("showdownLeftIcon").textContent = leftUser ? getAvatarEmoji(leftUser.avatar) : "💣";
-      document.getElementById("showdownRightIcon").textContent = rightUser ? getAvatarEmoji(rightUser.avatar) : "🍑";
-
       const arenaGrid = document.getElementById("arenaGrid");
-      if (slots.length === 0) {
-        arenaGrid.innerHTML = `<div class="col-span-2 text-center text-xs text-slate-300 py-8">Waiting for hunters to join the crew...</div>`;
+      const winnerBanner = document.getElementById("dailyWinnerBanner");
+      const todayEntries = getPlayerEntriesForDay(allHunts[todayKey]);
+      const uids = Object.keys(todayEntries);
+
+      if (uids.length === 0) {
+        arenaGrid.innerHTML = `
+          <div class="col-span-2 bg-cove-dark border border-amber-500/40 rounded-2xl p-6 text-center space-y-3">
+            <div class="text-3xl">⚓</div>
+            <p class="font-pirate font-bold text-amber-300 text-sm">No Booty Uploaded Yet Today!</p>
+            <p class="text-xs text-slate-200">Be the first pirate to submit your photo for today's hunt.</p>
+            <button onclick="switchTab('submit')" class="btn-gold px-4 py-2 rounded-xl text-xs font-extrabold mt-2 inline-block">
+              Submit Booty 📜
+            </button>
+          </div>
+        `;
+        winnerBanner.classList.add("hidden");
+        document.getElementById("showdownLeftIcon").textContent = "💣";
+        document.getElementById("showdownRightIcon").textContent = "🍑";
         return;
       }
 
-      arenaGrid.innerHTML = slots.map((uid, idx) => {
-        const entry = todayEntries[uid];
-        const isGold = idx === 1;
-        if (entry) {
-          return renderPlayerCard(todayKey, uid, entry, isGold);
-        } else {
-          const liveUser = allUsers[uid] || {};
-          const name = liveUser.moniker || "Waiting Hunter";
-          const icon = getAvatarEmoji(liveUser.avatar);
-          return `
-            <div class="${isGold ? "card-gold-exact" : "card-teal-exact"} rounded-2xl p-3 flex flex-col items-center justify-center text-center shadow-xl min-h-[240px] space-y-2 opacity-85">
-              <div class="flex items-center gap-1.5 bg-slate-950/40 px-2.5 py-1 rounded-full">
-                <span class="text-base">${icon}</span>
-                <span class="text-[11px] font-extrabold text-white truncate max-w-[90px]">${escapeHtml(name)}</span>
-              </div>
-              <div class="text-3xl animate-pulse my-3">⏳</div>
-              <p class="text-xs font-bold text-white">Still Hunting...</p>
-              <p class="text-[10px] text-white/80">No booty uploaded yet</p>
-            </div>
-          `;
-        }
-      }).join("");
+      const [uidA, uidB] = uids;
+      const entryA = todayEntries[uidA];
+      const entryB = uidB ? todayEntries[uidB] : null;
 
-      // Render Daily Winner Banner
-      const bannerEl = document.getElementById("dailyWinnerBanner");
-      const result = determineWinner(todayEntries);
-      if (result.status === "waiting") {
-        bannerEl.classList.add("hidden");
+      const userA = allUsers[uidA] || {};
+      const userB = uidB ? (allUsers[uidB] || {}) : {};
+
+      document.getElementById("showdownLeftIcon").textContent = getAvatarEmoji(userA.avatar || entryA.avatar);
+      document.getElementById("showdownRightIcon").textContent = uidB ? getAvatarEmoji(userB.avatar || entryB.avatar) : "🏴‍☠️";
+
+      let html = renderPlayerCard(todayKey, uidA, entryA, false);
+      if (uidB && entryB) {
+        html += renderPlayerCard(todayKey, uidB, entryB, true);
       } else {
-        bannerEl.classList.remove("hidden");
-        if (result.status === "draw") {
-          bannerEl.innerHTML = `
-            <div class="bg-cove-teal-header border-2 border-amber-400 rounded-2xl p-3 text-center shadow-xl">
-              <p class="font-pirate font-black text-amber-300 text-sm">🤝 TODAY'S SHOWDOWN: DRAW!</p>
-              <p class="text-xs text-slate-200 mt-0.5">${result.reason}</p>
-            </div>
-          `;
-        } else {
-          const wUser = allUsers[result.winnerUid] || todayEntries[result.winnerUid] || {};
-          const wName = wUser.moniker || "Champion";
-          const wIcon = getAvatarEmoji(wUser.avatar);
-          bannerEl.innerHTML = `
-            <div class="bg-gradient-to-r from-amber-600/40 via-amber-500/30 to-amber-600/40 border-2 border-amber-300 rounded-2xl p-3 text-center shadow-xl">
-              <p class="font-pirate font-black text-amber-300 text-sm">👑 LEADER: ${wIcon} ${escapeHtml(wName)}</p>
-              <p class="text-xs text-white mt-0.5">${result.reason}</p>
-            </div>
-          `;
-        }
-      }
-    }
-
-    function renderLeaderboard() {
-      const stats = {};
-
-      // Initialize every user in /users with their live moniker & avatar
-      Object.keys(allUsers).forEach(uid => {
-        stats[uid] = {
-          uid,
-          moniker: allUsers[uid].moniker || "Pirate",
-          avatar: allUsers[uid].avatar || "cannonballs",
-          wins: 0,
-          totalStars: 0,
-          ratedCount: 0
-        };
-      });
-
-      // Tally wins & average stars across all hunt days
-      Object.keys(allHunts).forEach(dateKey => {
-        const dayEntries = getPlayerEntriesForDay(allHunts[dateKey]);
-        Object.keys(dayEntries).forEach(uid => {
-          if (!stats[uid]) {
-            stats[uid] = {
-              uid,
-              moniker: dayEntries[uid].moniker || "Pirate",
-              avatar: dayEntries[uid].avatar || "cannonballs",
-              wins: 0,
-              totalStars: 0,
-              ratedCount: 0
-            };
-          }
-          const avg = getAverageStars(dayEntries[uid].ratings);
-          if (avg > 0) {
-            stats[uid].totalStars += avg;
-            stats[uid].ratedCount += 1;
-          }
-        });
-
-        const res = determineWinner(dayEntries);
-        if (res.status === "winner" && stats[res.winnerUid]) {
-          stats[res.winnerUid].wins += 1;
-        }
-      });
-
-      const ranked = Object.values(stats).map(s => ({
-        ...s,
-        avgStars: s.ratedCount > 0 ? (s.totalStars / s.ratedCount) : 0
-      })).sort((a, b) => {
-        if (b.wins !== a.wins) return b.wins - a.wins;
-        return b.avgStars - a.avgStars;
-      });
-
-      const listEl = document.getElementById("leaderboardList");
-      if (ranked.length === 0) {
-        listEl.innerHTML = `<p class="text-xs text-center text-slate-300">No hunters found yet.</p>`;
-        return;
-      }
-
-      listEl.innerHTML = ranked.map((player, index) => {
-        const rankBadge = index === 0 ? "🥇" : index === 1 ? "🥈" : `#${index + 1}`;
-        const icon = getAvatarEmoji(player.avatar);
-        return `
-          <div class="bg-cove-dark border border-amber-500/40 rounded-xl p-3 flex items-center justify-between shadow-md">
-            <div class="flex items-center gap-3">
-              <span class="text-xl font-black">${rankBadge}</span>
-              <span class="text-2xl">${icon}</span>
-              <div>
-                <p class="font-bold text-sm text-white">${escapeHtml(player.moniker)}</p>
-                <p class="text-[11px] text-amber-300 font-semibold">★ ${player.avgStars.toFixed(1)} Avg Stars</p>
-              </div>
-            </div>
-            <div class="text-right">
-              <span class="badge-soft-red px-3 py-1 rounded-full text-xs font-black">
-                ${player.wins} ${player.wins === 1 ? "Win" : "Wins"}
-              </span>
-            </div>
+        html += `
+          <div class="card-gold-exact rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-xl space-y-2 border-2 border-dashed border-amber-400/50">
+            <div class="text-3xl animate-pulse">⏳</div>
+            <p class="font-pirate font-bold text-amber-200 text-xs">Waiting for rival pirate to submit...</p>
           </div>
         `;
-      }).join("");
-    }
-
-    function renderHistoricMaps() {
-      const listEl = document.getElementById("historicLogsList");
-      const dates = Object.keys(allHunts).sort().reverse();
-
-      if (dates.length === 0) {
-        listEl.innerHTML = `<p class="text-xs text-amber-200/70 italic">No voyages logged yet. Upload your first photo to chart the map!</p>`;
-        return;
       }
+      arenaGrid.innerHTML = html;
 
-      listEl.innerHTML = dates.map(dateKey => {
-        const rawDay = allHunts[dateKey] || {};
-        const dayEntries = getPlayerEntriesForDay(rawDay);
-        const promptText = rawDay._prompt || getPromptForDate(dateKey);
-        const res = determineWinner(dayEntries);
-        let statusLabel = "In Progress ⏳";
-        if (res.status === "draw") statusLabel = "Draw 🤝";
-        if (res.status === "winner") {
-          const wUser = allUsers[res.winnerUid] || dayEntries[res.winnerUid] || {};
-          statusLabel = `👑 ${wUser.moniker || "Winner"}`;
-        }
-
-        return `
-          <div onclick="openHistoricModal('${dateKey}')" class="relative bg-cove-dark/90 hover:bg-cove-inner border border-amber-500/50 rounded-xl p-3 cursor-pointer transition shadow-md">
-            <span class="absolute -left-[27px] top-3.5 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-slate-950"></span>
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-black text-amber-300">${dateKey}</span>
-              <span class="text-[10px] font-bold bg-amber-500/20 text-amber-200 px-2 py-0.5 rounded-full border border-amber-400/30">${statusLabel}</span>
-            </div>
-            <p class="text-xs text-white font-semibold mt-1">"${escapeHtml(promptText)}"</p>
-          </div>
+      // Render daily winner banner if both submitted
+      const res = determineWinner(todayEntries);
+      if (res.status === "winner") {
+        const wUser = allUsers[res.winnerUid] || todayEntries[res.winnerUid] || {};
+        const wName = wUser.moniker || "Winner";
+        winnerBanner.className = "bg-amber-500 text-amber-950 border-2 border-amber-200 rounded-2xl p-3 text-center shadow-2xl space-y-1";
+        winnerBanner.innerHTML = `
+          <p class="font-pirate font-black text-sm uppercase tracking-wide">👑 Today's Victor: ${escapeHtml(wName)}!</p>
+          <p class="text-xs font-semibold">${res.reason}</p>
         `;
-      }).join("");
+        winnerBanner.classList.remove("hidden");
+      } else if (res.status === "draw") {
+        winnerBanner.className = "bg-cove-dark text-amber-200 border-2 border-amber-500/60 rounded-2xl p-3 text-center shadow-2xl space-y-1";
+        winnerBanner.innerHTML = `
+          <p class="font-pirate font-black text-sm uppercase tracking-wide">🤝 It's a Draw!</p>
+          <p class="text-xs font-semibold">${res.reason}</p>
+        `;
+        winnerBanner.classList.remove("hidden");
+      } else {
+        winnerBanner.classList.add("hidden");
+      }
     }
 
     function openHistoricModal(dateKey) {
       const rawDay = allHunts[dateKey] || {};
       const dayEntries = getPlayerEntriesForDay(rawDay);
-      const savedPrompt = rawDay._prompt || getPromptForDate(dateKey);
+      const promptText = rawDay._prompt || getPromptForDate(dateKey);
       const uids = Object.keys(dayEntries);
-      const cardsHtml = uids.map((uid, idx) => renderPlayerCard(dateKey, uid, dayEntries[uid], idx === 1)).join("");
+      const container = document.getElementById("historicModalContent");
 
-      document.getElementById("historicModalContent").innerHTML = `
-        <div class="space-y-3 pt-1">
-          <div class="text-center space-y-1">
-            <span class="badge-soft-red text-[10px] font-black px-3 py-0.5 rounded-full">${dateKey}</span>
-            <h3 id="historicPromptTitle" class="font-pirate font-bold text-amber-300 text-base mt-1">"${escapeHtml(savedPrompt)}"</h3>
+      if (uids.length === 0) {
+        container.innerHTML = `
+          <div class="space-y-3 text-center py-4">
+            <span class="text-2xl font-black text-amber-300">${dateKey}</span>
+            <p class="font-serif italic text-amber-100 text-sm">"${escapeHtml(promptText)}"</p>
+            <p class="text-xs text-slate-300">No booty was logged on this voyage.</p>
           </div>
-          <div class="grid grid-cols-2 gap-2.5">
-            ${cardsHtml || `<p class="col-span-2 text-center text-xs text-slate-300">No entries recorded.</p>`}
+        `;
+        document.getElementById("historicModal").classList.remove("hidden");
+        return;
+      }
+
+      const [uidA, uidB] = uids;
+      const entryA = dayEntries[uidA];
+      const entryB = uidB ? dayEntries[uidB] : null;
+
+      container.innerHTML = `
+        <div class="space-y-4">
+          <div class="text-center border-b border-amber-500/40 pb-2">
+            <span class="text-xs font-black text-amber-400 bg-cove-dark px-3 py-1 rounded-full border border-amber-700/50">Voyage: ${dateKey}</span>
+            <h3 class="font-serif italic text-amber-100 text-sm mt-2">"${escapeHtml(promptText)}"</h3>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            ${renderPlayerCard(dateKey, uidA, entryA, false)}
+            ${entryB ? renderPlayerCard(dateKey, uidB, entryB, true) : ""}
           </div>
         </div>
       `;
@@ -1700,11 +1602,11 @@
       document.getElementById("historicModal").classList.add("hidden");
     }
 
-    // --- INITIALIZE ON LOAD ---
-    window.addEventListener("DOMContentLoaded", () => {
+    // Initialize PWA and Lucide icons on window load
+    window.onload = function() {
       initPWA();
       if (window.lucide) lucide.createIcons();
-    });
+    };
   </script>
 </body>
 </html>
