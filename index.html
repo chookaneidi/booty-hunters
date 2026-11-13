@@ -164,7 +164,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 1.9</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.0</p>
     </div>
   </div>
 
@@ -380,7 +380,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 1.9</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.0</p>
           </div>
         </div>
       </div>
@@ -432,16 +432,16 @@
     const auth = firebase.auth();
     const db = firebase.database();
 
-    // 8 CHEEKY PIRATE AVATAR ICONS (RESTORED CLASSIC SET)
+    // 8 CHEEKY PIRATE AVATAR ICONS (ORIGINAL VERSION 1.1 SET)
     const AVATARS = [
       { id: "cannonballs", icon: "💣", name: "Double Cannonballs" },
-      { id: "chest", icon: "💎", name: "The Grand Chest" },
+      { id: "chest", icon: "🧰", name: "The Grand Chest" },
       { id: "spyglass", icon: "🔭", name: "Peep Spyglass" },
       { id: "peach", icon: "🍑", name: "The Sailor's Peach" },
-      { id: "hook", icon: "⚓", name: "Siren's Anchor" },
-      { id: "cracker", icon: "🦜", name: "Polly's Parrot" },
+      { id: "hook", icon: "🪝", name: "Siren's Hook" },
+      { id: "cracker", icon: "🍪", name: "Polly's Cracker" },
       { id: "jolly", icon: "🏴‍☠️", name: "Jolly Roger" },
-      { id: "doubloons", icon: "🪙", name: "Golden Doubloons" }
+      { id: "doubloons", icon: "💰", name: "Golden Doubloons" }
     ];
 
     // 8 COMMENT REACTION EMOJIS
@@ -827,8 +827,10 @@
           const targetEntry = day[targetUid];
           if (targetEntry && targetEntry.comments) {
             Object.values(targetEntry.comments).forEach(c => {
-              if (c.authorId === uid && !foundName && !isGenericName(c.authorName)) {
-                foundName = c.authorName;
+              const cUid = c.authorId || c.uid || c.userId;
+              const cName = c.authorName || c.moniker || c.alias || c.userName;
+              if (cUid === uid && !foundName && !isGenericName(cName)) {
+                foundName = cName;
               }
             });
           }
@@ -838,6 +840,27 @@
       return {
         moniker: foundName || (uNode && uNode.moniker) || "Pirate Hunter",
         avatar: foundAvatar || (uNode && uNode.avatar) || "cannonballs"
+      };
+    }
+
+    function resolveCommentAuthor(c) {
+      const cUid = c.authorId || c.uid || c.userId;
+      const liveUser = (cUid && allUsers[cUid]) || {};
+      const candidates = [
+        liveUser.moniker,
+        c.authorName,
+        c.moniker,
+        c.alias,
+        c.userName
+      ];
+      for (const name of candidates) {
+        if (!isGenericName(name)) return { name, avatar: liveUser.avatar || "cannonballs", uid: cUid };
+      }
+      // Fallback: if there are only 2 players and cUid isn't set, match by non-generic name if any
+      return {
+        name: liveUser.moniker || c.authorName || "Crewmate",
+        avatar: liveUser.avatar || "cannonballs",
+        uid: cUid
       };
     }
 
@@ -1201,9 +1224,9 @@
       const comment = entry && entry.comments && entry.comments[commentId];
       if (!comment) return;
 
-      const authorLive = allUsers[comment.authorId] || {};
-      const authorName = authorLive.moniker || comment.authorName || "Pirate";
-      const authorIcon = getAvatarEmoji(authorLive.avatar);
+      const resolvedAuthor = resolveCommentAuthor(comment);
+      const authorName = resolvedAuthor.name;
+      const authorIcon = getAvatarEmoji(resolvedAuthor.avatar);
       const reactions = comment.reactions || {};
 
       const reactionButtonsHtml = REACTION_EMOJIS.map(r => {
@@ -1405,9 +1428,9 @@
 
       const listHtml = cids.map(cid => {
         const c = comments[cid];
-        const isMine = currentUser && c.authorId === currentUser.uid;
-        const authorLive = allUsers[c.authorId] || {};
-        const authorName = authorLive.moniker || c.authorName || "Pirate";
+        const resolvedAuthor = resolveCommentAuthor(c);
+        const isMine = currentUser && resolvedAuthor.uid === currentUser.uid;
+        const authorName = resolvedAuthor.name;
         const reactions = c.reactions || {};
 
         // Summarize active reactions
@@ -1421,13 +1444,10 @@
           <div class="bg-slate-950/55 rounded-xl p-2 text-left border border-white/10 space-y-1">
             <div class="flex items-center justify-between gap-1">
               <span class="text-[10px] font-extrabold text-amber-300 truncate">${escapeHtml(authorName)}</span>
-              <div class="flex items-center gap-1">
-                ${isMine ? `<button type="button" onclick="startEditComment('${dateKey}', '${targetUid}', '${cid}')" class="text-[10px] text-amber-200 hover:text-white px-1" title="Edit comment">✏️</button>` : ""}
-                <button type="button" onclick="openCommentLightbox('${dateKey}', '${targetUid}', '${cid}')" class="text-[10px] text-amber-200 hover:text-white px-1" title="React / Enlarge">😊</button>
-              </div>
+              ${isMine ? `<button type="button" onclick="startEditComment('${dateKey}', '${targetUid}', '${cid}')" class="text-[10px] text-amber-200 hover:text-white px-1" title="Edit comment">✏️</button>` : ""}
             </div>
 
-            <!-- Tappable Enlargeable Comment Text -->
+            <!-- Tappable Enlargeable Comment Text (Tap to Enlarge & React) -->
             <p id="commentText_${cid}" onclick="openCommentLightbox('${dateKey}', '${targetUid}', '${cid}')" class="text-[11px] text-white leading-snug cursor-pointer hover:text-amber-100 break-words">
               ${escapeHtml(c.text)} ${c.edited ? `<span class="text-[9px] text-slate-400 italic">(edited)</span>` : ""}
             </p>
@@ -1656,7 +1676,17 @@
         <div class="space-y-3 pt-1">
           <div class="text-center space-y-1">
             <span class="badge-soft-red text-[10px] font-black px-3 py-0.5 rounded-full">${dateKey}</span>
-            <h3 class="font-pirate font-bold text-amber-300 text-base mt-1">"${escapeHtml(savedPrompt)}"</h3>
+            <div class="flex items-center justify-center gap-1.5 mt-1">
+              <h3 id="historicPromptTitle" class="font-pirate font-bold text-amber-300 text-base">"${escapeHtml(savedPrompt)}"</h3>
+              <button type="button" onclick="toggleHistoricPromptEdit()" class="text-xs text-amber-200 hover:text-white bg-cove-dark px-2 py-0.5 rounded-lg border border-amber-500/40" title="Edit Past Prompt">✏️</button>
+            </div>
+            <div id="historicPromptEditBox" class="hidden pt-1 space-y-1.5">
+              <input type="text" id="historicPromptInput" value="${escapeHtml(savedPrompt)}" class="w-full bg-cove-dark border border-amber-400 rounded-xl px-3 py-1.5 text-xs text-white text-center" />
+              <div class="flex justify-center gap-2">
+                <button type="button" onclick="toggleHistoricPromptEdit()" class="text-[11px] bg-slate-700 text-white px-3 py-1 rounded-lg">Cancel</button>
+                <button type="button" onclick="saveHistoricPrompt('${dateKey}')" class="text-[11px] btn-gold font-bold px-3 py-1 rounded-lg">Save Prompt</button>
+              </div>
+            </div>
           </div>
           <div class="grid grid-cols-2 gap-2.5">
             ${cardsHtml || `<p class="col-span-2 text-center text-xs text-slate-300">No entries recorded.</p>`}
@@ -1665,6 +1695,21 @@
       `;
       document.getElementById("historicModal").classList.remove("hidden");
       if (window.lucide) lucide.createIcons();
+    }
+
+    function toggleHistoricPromptEdit() {
+      const box = document.getElementById("historicPromptEditBox");
+      if (box) box.classList.toggle("hidden");
+    }
+
+    function saveHistoricPrompt(dateKey) {
+      const input = document.getElementById("historicPromptInput");
+      const newPrompt = input ? input.value.trim() : "";
+      if (!newPrompt) return;
+      db.ref(`booty_hunters/${dateKey}/_prompt`).set(newPrompt).then(() => {
+        showInAppToast("Prompt Updated 📜", "Historic target saved!");
+        openHistoricModal(dateKey);
+      });
     }
 
     function closeHistoricModal() {
