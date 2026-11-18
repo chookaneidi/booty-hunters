@@ -22,43 +22,7 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// Listen for scheduled notification requests from index.html (e.g. 30s Test Notification)
-self.addEventListener("message", (event) => {
-  try {
-    const data = event.data;
-    if (!data || data.type !== "SCHEDULE_NOTIFICATION") return;
-
-    const title = data.title || "🏴‍☠️ Booty Hunters";
-    const body = data.body || "Ahoy! New activity on the high seas!";
-    const tag = data.tag || `bh-${Date.now()}`;
-    const delayMs = Math.max(0, Number(data.delayMs) || 0);
-
-    // event.waitUntil keeps the Service Worker alive on Android while waiting out the delay
-    const scheduledTask = new Promise((resolve) => {
-      setTimeout(() => {
-        self.registration
-          .showNotification(title, {
-            body: body,
-            icon: DEFAULT_ICON,
-            badge: DEFAULT_ICON,
-            tag: tag,
-            renotify: true,
-            vibrate: [200, 100, 200]
-          })
-          .then(resolve)
-          .catch(resolve);
-      }, delayMs);
-    });
-
-    if (event.waitUntil) {
-      event.waitUntil(scheduledTask);
-    }
-  } catch (err) {
-    // Prevent unhandled worker exceptions
-  }
-});
-
-// Handle future Web Push payloads if triggered remotely
+// Handle remote Web Push payloads from Cloudflare Worker (wakes up app even when minimized or force-closed)
 self.addEventListener("push", (event) => {
   try {
     let payload = {
