@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.9</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.0</p>
     </div>
   </div>
 
@@ -341,7 +341,7 @@
             </button>
 
             <button onclick="triggerTestNotification()" id="testNotifBtn" class="w-full bg-cove-inner hover:bg-slate-800 border border-cyan-400/50 text-cyan-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
-              <i data-lucide="clock" class="w-4 h-4"></i> Test Notifications (30s Delay) ⏱️
+              <i data-lucide="clock" class="w-4 h-4"></i> Test Push Notification (25s Delay) ⏱️
             </button>
 
             <p id="notifStatusText" class="text-[10px] text-amber-200/80 text-center font-mono"></p>
@@ -354,7 +354,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.9</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.0</p>
           </div>
         </div>
       </div>
@@ -400,6 +400,10 @@
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
     const db = firebase.database();
+
+    // --- CLOUDFLARE WEB PUSH CONFIGURATION ---
+    const PUSH_WORKER_URL = "https://booty-push.chookaneidi.workers.dev";
+    const VAPID_PUBLIC_KEY = "BHQI_FuqibX_IpUW6lR0hWjDTg6Lx8MlgeUd-2DOvvVxstKHo5uGP5-WVwG5tnSVyJwQSiB6JfGczy38qYR2gZQ";
 
     // CLASSIC VERSION 1.1 AVATARS (Cardboard box chest & mermaid hook)
     const AVATARS = [
@@ -468,6 +472,68 @@
     let testTargetTimestamp = 0;
     const deliveredNotifTags = new Set();
 
+    function urlBase64ToUint8Array(base64String) {
+      const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
+
+    async function subscribeDeviceToWebPush() {
+      if (!PUSH_WORKER_URL || !VAPID_PUBLIC_KEY || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        return null;
+      }
+      try {
+        const reg = await navigator.serviceWorker.register("./sw.js");
+        await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY.trim())
+          });
+        }
+        const subJson = sub.toJSON();
+        if (currentUser && subJson) {
+          await db.ref(`users/${currentUser.uid}/pushSubscription`).set(subJson);
+        }
+        return subJson;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function sendRemotePush(subscription, title, body, tag, delaySeconds = 0) {
+      if (!PUSH_WORKER_URL || !subscription || !subscription.endpoint) return false;
+      try {
+        const res = await fetch(`${PUSH_WORKER_URL.replace(/\/$/, "")}/send-push`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription, title, body, tag, delaySeconds })
+        });
+        return res.ok;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async function notifyPartnerViaCloudflare(title, body, tag) {
+      if (!currentUser || !PUSH_WORKER_URL) return;
+      const partnerUid = getOtherKnownUid();
+      if (!partnerUid) return;
+      try {
+        const snap = await db.ref(`users/${partnerUid}/pushSubscription`).once("value");
+        const partnerSub = snap.val();
+        if (partnerSub && partnerSub.endpoint) {
+          await sendRemotePush(partnerSub, title, body, tag, 0);
+        }
+      } catch (e) {}
+    }
+
     function initPWA() {
       try {
         const manifest = {
@@ -486,7 +552,6 @@
         const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
         document.getElementById("pwaManifest").setAttribute("href", URL.createObjectURL(manifestBlob));
 
-        // Register real same-origin sw.js if hosted; never use blob: URLs which browsers reject and hang .ready forever
         if ("serviceWorker" in navigator && window.location.protocol.startsWith("http")) {
           navigator.serviceWorker.register("./sw.js").catch(() => {});
         }
@@ -659,12 +724,17 @@
         return;
       }
 
-      Notification.requestPermission().then(perm => {
+      Notification.requestPermission().then(async perm => {
         if (perm === "granted") {
           alertsEnabled = true;
           localStorage.setItem("bh_alerts_enabled", "true");
+          const sub = await subscribeDeviceToWebPush();
           updateNotifButtonUI();
-          showInAppToast("Alerts Enabled 🔔", "Phone pop-up notifications are active!", true);
+          if (sub) {
+            showInAppToast("Background Push Active 🔔", "Cloudflare Push subscribed—works even when app is closed!", true, `enabled-${Date.now()}`);
+          } else {
+            showInAppToast("Alerts Enabled 🔔", "Phone pop-up notifications are active!", true, `enabled-${Date.now()}`);
+          }
         } else if (perm === "denied") {
           alertsEnabled = false;
           localStorage.setItem("bh_alerts_enabled", "false");
@@ -685,32 +755,33 @@
     }
 
     function triggerTestNotification() {
-      const startScheduledTest = () => {
+      const startScheduledTest = async () => {
         alertsEnabled = true;
         localStorage.setItem("bh_alerts_enabled", "true");
-        updateNotifButtonUI();
-
-        if (testNotifTimeout) clearTimeout(testNotifTimeout);
-        if (testCountdownInterval) clearInterval(testCountdownInterval);
 
         const testTag = `bh-test-${Date.now()}`;
-        const testTitle = "🏴‍☠️ Booty Hunters Test Alert!";
-        const testBody = "Ahoy! Background phone notifications are working!";
-        testTargetTimestamp = Date.now() + 30000;
+        const testTitle = "🏴‍☠️ Booty Hunters Push Test!";
+        const testBody = "Ahoy! Background push works even when minimized or closed!";
 
-        // Also ask active Service Worker (if installed) to schedule the notification in the background
-        if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({
-            type: "SCHEDULE_NOTIFICATION",
-            title: testTitle,
-            body: testBody,
-            tag: testTag,
-            delayMs: 30000
-          });
+        // If Cloudflare Worker is configured, schedule a real remote Apple/Google Web Push 25s from now
+        const sub = await subscribeDeviceToWebPush();
+        updateNotifButtonUI();
+
+        if (sub && PUSH_WORKER_URL) {
+          const queued = await sendRemotePush(sub, testTitle, testBody, testTag, 25);
+          if (queued) {
+            showInAppToast("Remote Push Scheduled ⏱️", "Minimize or force-close the app now—push arrives in 25s!");
+            return;
+          }
         }
 
+        // Fallback local countdown if Cloudflare Worker is not configured yet
+        if (testNotifTimeout) clearTimeout(testNotifTimeout);
+        if (testCountdownInterval) clearInterval(testCountdownInterval);
+        testTargetTimestamp = Date.now() + 25000;
+
         const btn = document.getElementById("testNotifBtn");
-        const fireTestNow = () => {
+        const fireLocalTestOnce = () => {
           if (!testTargetTimestamp) return;
           testTargetTimestamp = 0;
           if (testNotifTimeout) clearTimeout(testNotifTimeout);
@@ -726,27 +797,27 @@
           if (!btn) return;
           const remaining = testTargetTimestamp ? Math.max(0, Math.ceil((testTargetTimestamp - Date.now()) / 1000)) : 0;
           if (remaining > 0) {
-            btn.innerHTML = `<i data-lucide="hourglass" class="w-4 h-4"></i> Sending in ${remaining}s... (Minimize app now)`;
+            btn.innerHTML = `<i data-lucide="hourglass" class="w-4 h-4"></i> Sending in ${remaining}s...`;
             btn.className = "w-full bg-amber-500/30 border border-amber-300 text-amber-100 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5";
           } else {
-            btn.innerHTML = `<i data-lucide="clock" class="w-4 h-4"></i> Test Notifications (30s Delay) ⏱️`;
+            btn.innerHTML = `<i data-lucide="clock" class="w-4 h-4"></i> Test Push Notification (25s Delay) ⏱️`;
             btn.className = "w-full bg-cove-inner hover:bg-slate-800 border border-cyan-400/50 text-cyan-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5";
           }
           if (window.lucide) lucide.createIcons();
         };
 
         updateCountdownBtn();
-        showInAppToast("Test Scheduled ⏱️", "Minimize or lock your phone now—alert arrives in 30s!");
+        showInAppToast("Local Test Scheduled ⏱️", "Add Cloudflare Worker URL in code for closed-app iPhone push!");
 
         testCountdownInterval = setInterval(() => {
           if (testTargetTimestamp && Date.now() >= testTargetTimestamp) {
-            fireTestNow();
+            fireLocalTestOnce();
           } else {
             updateCountdownBtn();
           }
         }, 1000);
 
-        testNotifTimeout = setTimeout(fireTestNow, 30000);
+        testNotifTimeout = setTimeout(fireLocalTestOnce, 25000);
       };
 
       if (!("Notification" in window)) {
@@ -774,21 +845,20 @@
     }
 
     document.addEventListener("visibilitychange", () => {
-      if (testTargetTimestamp && Date.now() >= testTargetTimestamp && testNotifTimeout) {
-        clearTimeout(testNotifTimeout);
-        testNotifTimeout = null;
-        if (testCountdownInterval) {
-          clearInterval(testCountdownInterval);
-          testCountdownInterval = null;
-        }
+      if (testTargetTimestamp && Date.now() >= testTargetTimestamp) {
+        const tag = `bh-test-${Date.now()}`;
         testTargetTimestamp = 0;
+        if (testNotifTimeout) clearTimeout(testNotifTimeout);
+        if (testCountdownInterval) clearInterval(testCountdownInterval);
+        testNotifTimeout = null;
+        testCountdownInterval = null;
         const btn = document.getElementById("testNotifBtn");
         if (btn) {
-          btn.innerHTML = `<i data-lucide="clock" class="w-4 h-4"></i> Test Notifications (30s Delay) ⏱️`;
+          btn.innerHTML = `<i data-lucide="clock" class="w-4 h-4"></i> Test Push Notification (25s Delay) ⏱️`;
           btn.className = "w-full bg-cove-inner hover:bg-slate-800 border border-cyan-400/50 text-cyan-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5";
           if (window.lucide) lucide.createIcons();
         }
-        sendSystemNotification("🏴‍☠️ Booty Hunters Test Alert!", "Ahoy! Background phone notifications are working!", `bh-test-${Date.now()}`);
+        sendSystemNotification("🏴‍☠️ Booty Hunters Push Test!", "Ahoy! Background push is working!", tag);
       }
     });
 
@@ -810,7 +880,8 @@
             ? "Status: Add to Home Screen on iPhone to unlock OS alerts"
             : "Status: OS notifications unavailable in this browser";
         } else {
-          statusEl.textContent = `Phone Permission: ${Notification.permission.toUpperCase()} • Alerts: ${alertsEnabled ? "ON" : "OFF"}`;
+          const pushMode = PUSH_WORKER_URL && VAPID_PUBLIC_KEY ? "Cloudflare Push Ready" : "Local Mode";
+          statusEl.textContent = `Permission: ${Notification.permission.toUpperCase()} • ${pushMode}`;
         }
       }
       if (window.lucide) lucide.createIcons();
@@ -1026,6 +1097,10 @@
         renderAllViews();
       });
 
+      if (alertsEnabled) {
+        subscribeDeviceToWebPush();
+      }
+
       db.ref("users").on("value", snap => {
         const usersVal = snap.val() || {};
         Object.keys(usersVal).forEach(uid => {
@@ -1233,6 +1308,11 @@
 
         document.getElementById("photoTitle").value = "";
         fileInput.value = "";
+        notifyPartnerViaCloudflare(
+          "🏴‍☠️ Booty Hunters",
+          `📸 ${userProfile.moniker} uploaded booty for today's hunt!`,
+          `upload-${todayKey}-${currentUser.uid}`
+        );
         showInAppToast("Booty Submitted! 🏴‍☠️", `Logged in ${formatDuration(elapsedSeconds)}!`);
         switchTab("target");
       } catch (err) {
@@ -1253,6 +1333,11 @@
         defeated: true,
         timestamp: Date.now()
       }).then(() => {
+        notifyPartnerViaCloudflare(
+          "🏴‍☠️ Booty Hunters",
+          `🏳️ ${userProfile.moniker} admitted defeat today!`,
+          `defeat-${todayKey}-${currentUser.uid}`
+        );
         showInAppToast("White Flag Raised 🏳️", "Defeat recorded for today.");
         switchTab("target");
       });
@@ -1284,6 +1369,11 @@
         timestamp: Date.now()
       }).then(() => {
         if (inputEl) inputEl.value = "";
+        notifyPartnerViaCloudflare(
+          "🏴‍☠️ Booty Hunters",
+          `💬 ${userProfile.moniker}: "${text}"`,
+          `comment-${newRef.key}`
+        );
         refreshActiveHistoricIfOpen(dateKey);
       });
     }
