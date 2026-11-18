@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.3</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.4</p>
     </div>
   </div>
 
@@ -348,7 +348,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.3</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.4</p>
           </div>
         </div>
       </div>
@@ -476,6 +476,7 @@
     let allUsers = {};
     let allHunts = {};
     let todayKey = "";
+    let activeHistoricDateKey = null;
     let alertsEnabled = false;
     let lastNotifiedSignature = "";
     let last8amAlertDate = "";
@@ -772,16 +773,35 @@
     }
 
     function resolveCommentAuthor(c) {
-      const cUid = c.authorId || c.uid || c.userId;
+      const cUid = c.authorId || c.uid || c.userId || null;
       const liveUser = (cUid && allUsers[cUid]) || {};
       const candidates = [c.authorName, liveUser.moniker, c.moniker, c.alias];
+      let resolvedName = null;
       for (const name of candidates) {
-        if (!isGenericName(name)) return { name, avatar: liveUser.avatar || "cannonballs", uid: cUid };
+        if (!isGenericName(name)) {
+          resolvedName = name;
+          break;
+        }
       }
+      if (!resolvedName) {
+        resolvedName = c.authorName || liveUser.moniker || "Pirate Hunter";
+      }
+
+      // Check ownership via UID or matching moniker for older legacy comments
+      let isMine = false;
+      if (currentUser) {
+        if (cUid && cUid === currentUser.uid) {
+          isMine = true;
+        } else if (!cUid && userProfile && !isGenericName(userProfile.moniker)) {
+          isMine = String(resolvedName).trim().toLowerCase() === String(userProfile.moniker).trim().toLowerCase();
+        }
+      }
+
       return {
-        name: c.authorName || liveUser.moniker || "Pirate Hunter",
+        name: resolvedName,
         avatar: liveUser.avatar || "cannonballs",
-        uid: cUid
+        uid: cUid,
+        isMine: isMine
       };
     }
 
@@ -1053,31 +1073,40 @@
       });
     }
 
-    function startEditComment(commentId) {
-      const textEl = document.getElementById(`commentText_${commentId}`);
-      const editBox = document.getElementById(`commentEditBox_${commentId}`);
+    function startEditComment(domKey) {
+      const textEl = document.getElementById(`commentText_${domKey}`);
+      const editBox = document.getElementById(`commentEditBox_${domKey}`);
+      const inputEl = document.getElementById(`commentEditInput_${domKey}`);
       if (textEl && editBox) {
         textEl.classList.add("hidden");
         editBox.classList.remove("hidden");
+        if (inputEl) {
+          inputEl.focus();
+          inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+        }
       }
     }
 
-    function cancelEditComment(commentId) {
-      const textEl = document.getElementById(`commentText_${commentId}`);
-      const editBox = document.getElementById(`commentEditBox_${commentId}`);
+    function cancelEditComment(domKey) {
+      const textEl = document.getElementById(`commentText_${domKey}`);
+      const editBox = document.getElementById(`commentEditBox_${domKey}`);
       if (textEl && editBox) {
         textEl.classList.remove("hidden");
         editBox.classList.add("hidden");
       }
     }
 
-    function saveEditedComment(dateKey, targetUid, commentId) {
-      const inputEl = document.getElementById(`commentEditInput_${commentId}`);
+    function saveEditedComment(dateKey, targetUid, commentId, domKey) {
+      const inputEl = document.getElementById(`commentEditInput_${domKey}`);
       const newText = inputEl ? inputEl.value.trim() : "";
       if (!newText) return;
       db.ref(`booty_hunters/${dateKey}/${targetUid}/comments/${commentId}`).update({
         text: newText,
-        edited: true
+        edited: true,
+        authorId: currentUser.uid,
+        authorName: userProfile.moniker
+      }).then(() => {
+        showInAppToast("Comment Updated ✏️", "Your comment has been saved.");
       });
     }
 
@@ -1199,6 +1228,12 @@
       renderShowdown();
       renderLeaderboard();
       renderHistoricMaps();
+      if (activeHistoricDateKey && !document.getElementById("historicModal").classList.contains("hidden")) {
+        const activeId = document.activeElement && document.activeElement.id;
+        if (!activeId || !activeId.startsWith("commentEditInput_historic_")) {
+          openHistoricModal(activeHistoricDateKey);
+        }
+      }
       if (window.lucide) lucide.createIcons();
     }
 
@@ -1220,7 +1255,7 @@
       }
     }
 
-    function renderPlayerCard(dateKey, uid, entry, isGoldCard) {
+    function renderPlayerCard(dateKey, uid, entry, isGoldCard, context = "showdown") {
       const liveUser = allUsers[uid] || {};
       const displayName = (!isGenericName(liveUser.moniker) ? liveUser.moniker : null)
         || (!isGenericName(entry.moniker) ? entry.moniker : null)
@@ -1243,7 +1278,7 @@
               <div class="text-4xl">🏳️</div>
               <p class="font-pirate font-bold text-xs text-white">Admitted Defeat</p>
             </div>
-            <div class="w-full">${renderCommentsSection(dateKey, uid, entry.comments)}</div>
+            <div class="w-full">${renderCommentsSection(dateKey, uid, entry.comments, context)}</div>
           </div>
         `;
       }
@@ -1284,22 +1319,23 @@
             </p>
           </div>
 
-          ${renderCommentsSection(dateKey, uid, entry.comments)}
+          ${renderCommentsSection(dateKey, uid, entry.comments, context)}
         </div>
       `;
     }
 
-    function renderCommentsSection(dateKey, targetUid, commentsObj) {
+    function renderCommentsSection(dateKey, targetUid, commentsObj, context = "showdown") {
       const comments = commentsObj || {};
       const cids = Object.keys(comments);
-      const inputId = `commentInput_${dateKey}_${targetUid}`;
+      const inputId = `commentInput_${context}_${dateKey}_${targetUid}`;
 
       const listHtml = cids.map(cid => {
         const c = comments[cid];
         const resolvedAuthor = resolveCommentAuthor(c);
-        const isMine = currentUser && resolvedAuthor.uid === currentUser.uid;
+        const isMine = resolvedAuthor.isMine;
         const authorName = resolvedAuthor.name;
         const reactions = c.reactions || {};
+        const domKey = `${context}_${cid}`;
 
         const reactionPills = REACTION_EMOJIS.map(r => {
           const count = reactions[r.key] ? Object.keys(reactions[r.key]).length : 0;
@@ -1311,19 +1347,19 @@
           <div class="bg-slate-950/55 rounded-xl p-2 text-left border border-white/10 space-y-1">
             <div class="flex items-center justify-between gap-1">
               <span class="text-[10px] font-extrabold text-amber-300 truncate">${escapeHtml(authorName)}</span>
-              ${isMine ? `<button type="button" onclick="startEditComment('${cid}')" class="text-[10px] text-amber-200 hover:text-white px-1" title="Edit">✏️</button>` : ""}
+              ${isMine ? `<button type="button" onclick="startEditComment('${domKey}')" class="text-[10px] text-amber-200 hover:text-white px-1" title="Edit">✏️</button>` : ""}
             </div>
 
-            <p id="commentText_${cid}" onclick="openCommentLightbox('${dateKey}', '${targetUid}', '${cid}')" class="text-[11px] text-white leading-snug cursor-pointer hover:text-amber-100 break-words">
+            <p id="commentText_${domKey}" onclick="openCommentLightbox('${dateKey}', '${targetUid}', '${cid}')" class="text-[11px] text-white leading-snug cursor-pointer hover:text-amber-100 break-words">
               ${escapeHtml(c.text)} ${c.edited ? `<span class="text-[9px] text-slate-400 italic">(edited)</span>` : ""}
             </p>
 
             ${isMine ? `
-              <div id="commentEditBox_${cid}" class="hidden space-y-1 pt-1">
-                <input type="text" id="commentEditInput_${cid}" value="${escapeHtml(c.text)}" class="w-full bg-slate-900 border border-amber-400 rounded-lg px-2 py-1 text-[11px] text-white" />
+              <div id="commentEditBox_${domKey}" class="hidden space-y-1 pt-1">
+                <input type="text" id="commentEditInput_${domKey}" value="${escapeHtml(c.text)}" onkeydown="if(event.key==='Enter') saveEditedComment('${dateKey}', '${targetUid}', '${cid}', '${domKey}')" class="w-full bg-slate-900 border border-amber-400 rounded-lg px-2 py-1 text-[11px] text-white" />
                 <div class="flex gap-1 justify-end">
-                  <button type="button" onclick="cancelEditComment('${cid}')" class="text-[10px] bg-slate-700 text-white px-2 py-0.5 rounded">Cancel</button>
-                  <button type="button" onclick="saveEditedComment('${dateKey}', '${targetUid}', '${cid}')" class="text-[10px] bg-amber-500 text-amber-950 font-bold px-2 py-0.5 rounded">Save</button>
+                  <button type="button" onclick="cancelEditComment('${domKey}')" class="text-[10px] bg-slate-700 text-white px-2 py-0.5 rounded">Cancel</button>
+                  <button type="button" onclick="saveEditedComment('${dateKey}', '${targetUid}', '${cid}', '${domKey}')" class="text-[10px] bg-amber-500 text-amber-950 font-bold px-2 py-0.5 rounded">Save</button>
                 </div>
               </div>
             ` : ""}
@@ -1337,7 +1373,7 @@
         <div class="space-y-1.5 pt-1 border-t border-white/20">
           <div class="space-y-1.5 max-h-36 overflow-y-auto">${listHtml}</div>
           <div class="flex gap-1">
-            <input type="text" id="${inputId}" placeholder="Add a comment..." class="w-full bg-slate-950/60 border border-white/20 rounded-lg px-2 py-1 text-[11px] text-white placeholder-white/50 focus:outline-none focus:border-amber-300" />
+            <input type="text" id="${inputId}" placeholder="Add a comment..." onkeydown="if(event.key==='Enter') postComment('${dateKey}', '${targetUid}', '${inputId}')" class="w-full bg-slate-950/60 border border-white/20 rounded-lg px-2 py-1 text-[11px] text-white placeholder-white/50 focus:outline-none focus:border-amber-300" />
             <button type="button" onclick="postComment('${dateKey}', '${targetUid}', '${inputId}')" class="bg-amber-400 hover:bg-amber-300 text-amber-950 font-black px-2 py-1 rounded-lg text-[10px]">
               Send
             </button>
@@ -1379,9 +1415,9 @@
       document.getElementById("showdownLeftIcon").textContent = getAvatarEmoji(userA.avatar || entryA.avatar);
       document.getElementById("showdownRightIcon").textContent = uidB ? getAvatarEmoji(userB.avatar || entryB.avatar) : "🏴‍☠️";
 
-      let html = renderPlayerCard(todayKey, uidA, entryA, false);
+      let html = renderPlayerCard(todayKey, uidA, entryA, false, "showdown");
       if (uidB && entryB) {
-        html += renderPlayerCard(todayKey, uidB, entryB, true);
+        html += renderPlayerCard(todayKey, uidB, entryB, true, "showdown");
       } else {
         html += `
           <div class="card-gold-exact rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-xl space-y-2 border-2 border-dashed border-amber-400/50">
@@ -1510,6 +1546,7 @@
     }
 
     function openHistoricModal(dateKey) {
+      activeHistoricDateKey = dateKey;
       const rawDay = allHunts[dateKey] || {};
       const dayEntries = getPlayerEntriesForDay(rawDay);
       const promptText = rawDay._prompt || getPromptForDate(dateKey);
@@ -1539,8 +1576,8 @@
             <h3 class="font-serif italic text-amber-100 text-sm mt-2">"${escapeHtml(promptText)}"</h3>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            ${renderPlayerCard(dateKey, uidA, entryA, false)}
-            ${entryB ? renderPlayerCard(dateKey, uidB, entryB, true) : ""}
+            ${renderPlayerCard(dateKey, uidA, entryA, false, "historic")}
+            ${entryB ? renderPlayerCard(dateKey, uidB, entryB, true, "historic") : ""}
           </div>
         </div>
       `;
@@ -1549,6 +1586,7 @@
     }
 
     function closeHistoricModal() {
+      activeHistoricDateKey = null;
       document.getElementById("historicModal").classList.add("hidden");
     }
 
