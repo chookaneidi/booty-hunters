@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.5</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.6</p>
     </div>
   </div>
 
@@ -348,7 +348,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.5</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.6</p>
           </div>
         </div>
       </div>
@@ -658,7 +658,9 @@
       const newKey = getHuntDateKey();
       if (newKey !== todayKey) {
         todayKey = newKey;
-        document.getElementById("todayPromptText").textContent = `"${getPromptForDate(todayKey)}"`;
+        const promptForToday = (allHunts[todayKey] && allHunts[todayKey]._prompt) || getPromptForDate(todayKey);
+        document.getElementById("todayPromptText").textContent = `"${promptForToday}"`;
+        db.ref(`booty_hunters/${todayKey}/_prompt`).transaction(curr => curr || promptForToday);
         renderAllViews();
       }
       const now = new Date();
@@ -757,7 +759,7 @@
           if (targetEntry && targetEntry.comments) {
             Object.values(targetEntry.comments).forEach(c => {
               const cUid = c.authorId || c.authorUid || c.uid || c.userId || c.senderId;
-              const cName = c.authorName || c.name || c.userName || c.moniker || c.alias;
+              const cName = c.authorName || c.moniker || c.alias || c.userName || c.name;
               if (cUid === uid && !foundName && !isGenericName(cName)) {
                 foundName = cName;
               }
@@ -772,31 +774,23 @@
       };
     }
 
-    function resolveCommentAuthor(c) {
-      const possibleUids = [c.authorId, c.authorUid, c.uid, c.userId, c.senderId, c.posterId, c.by, c.user];
-      let cUid = null;
-      for (const id of possibleUids) {
-        if (id && typeof id === "string" && id.length >= 10 && !id.includes(" ")) {
-          cUid = id;
-          break;
-        }
-      }
-      if (!cUid && c.author && typeof c.author === "string" && allUsers[c.author]) {
-        cUid = c.author;
-      }
+    function getOtherKnownUid() {
+      if (!currentUser) return null;
+      const otherUid = Object.keys(allUsers).find(u => u !== currentUser.uid);
+      return otherUid || null;
+    }
 
+    function resolveCommentAuthor(c) {
+      const cUid = c.authorId || c.authorUid || c.uid || c.userId || c.senderId || null;
       const liveUser = (cUid && allUsers[cUid]) || {};
       const candidates = [
-        liveUser.moniker,
         c.authorName,
-        c.name,
-        c.userName,
-        c.username,
-        c.userAlias,
-        c.displayName,
+        liveUser.moniker,
         c.moniker,
         c.alias,
-        typeof c.author === "string" && !allUsers[c.author] ? c.author : null
+        c.userName,
+        c.name,
+        c.author
       ];
 
       let resolvedName = null;
@@ -806,29 +800,39 @@
           break;
         }
       }
-      if (!resolvedName) {
-        resolvedName = liveUser.moniker || c.authorName || "Pirate Hunter";
+
+      // If no UID was stored on the comment, try matching by exact moniker
+      let resolvedUid = cUid;
+      if (!resolvedUid && resolvedName) {
+        const matchedUid = Object.keys(allUsers).find(u => {
+          const m = allUsers[u] && allUsers[u].moniker;
+          return m && m.trim().toLowerCase() === resolvedName.trim().toLowerCase();
+        });
+        if (matchedUid) resolvedUid = matchedUid;
       }
 
-      const isOrphaned = !cUid && isGenericName(resolvedName);
-
-      // Check ownership via UID or matching moniker for older legacy comments
-      let isMine = false;
-      if (currentUser) {
-        if (cUid && cUid === currentUser.uid) {
-          isMine = true;
-        } else if (!cUid && userProfile && !isGenericName(userProfile.moniker)) {
-          isMine = String(resolvedName).trim().toLowerCase() === String(userProfile.moniker).trim().toLowerCase();
-        }
-      }
+      const finalName = resolvedName || liveUser.moniker || "Pirate Hunter";
+      const isOrphaned = !resolvedUid || isGenericName(finalName);
 
       return {
-        name: resolvedName,
+        name: finalName,
         avatar: liveUser.avatar || "cannonballs",
-        uid: cUid,
-        isMine: isMine,
+        uid: resolvedUid,
         isOrphaned: isOrphaned
       };
+    }
+
+    const subscribedUserUids = new Set();
+    function ensureUserSubscribed(uid) {
+      if (!uid || subscribedUserUids.has(uid)) return;
+      subscribedUserUids.add(uid);
+      db.ref("users/" + uid).on("value", snap => {
+        const val = snap.val();
+        if (val) {
+          allUsers[uid] = extractRealProfileFromHistory(uid, allHunts, { ...allUsers, [uid]: val });
+          renderAllViews();
+        }
+      }, () => {});
     }
 
     function initAppListeners() {
@@ -840,8 +844,8 @@
       const day12Key = `${currentMonthPrefix}12`;
       const day13Key = `${currentMonthPrefix}13`;
 
-      db.ref(`booty_hunters/${day12Key}/_prompt`).set(getPromptForDate(day12Key));
-      db.ref(`booty_hunters/${day13Key}/_prompt`).set(getPromptForDate(day13Key));
+      db.ref(`booty_hunters/${day12Key}/_prompt`).transaction(curr => curr || getPromptForDate(day12Key));
+      db.ref(`booty_hunters/${day13Key}/_prompt`).transaction(curr => curr || getPromptForDate(day13Key));
 
       if (todayKey !== day12Key && todayKey !== day13Key) {
         db.ref(`booty_hunters/${todayKey}/_prompt`).transaction(curr => curr || defaultTodayPrompt);
@@ -885,10 +889,8 @@
               const entry = day[key];
               if (entry && entry.comments) {
                 Object.values(entry.comments).forEach(c => {
-                  const possibleUid = c.authorId || c.authorUid || c.uid || c.userId || c.senderId;
-                  if (possibleUid && typeof possibleUid === "string" && possibleUid.length >= 10) {
-                    discoveredUids.add(possibleUid);
-                  }
+                  const cUid = c.authorId || c.authorUid || c.uid || c.userId || c.senderId;
+                  if (cUid) discoveredUids.add(cUid);
                 });
               }
             }
@@ -896,14 +898,7 @@
         });
 
         discoveredUids.forEach(uid => {
-          if (!allUsers[uid]) {
-            db.ref("users/" + uid).once("value").then(uSnap => {
-              if (uSnap.exists()) {
-                allUsers[uid] = extractRealProfileFromHistory(uid, allHunts, { [uid]: uSnap.val() });
-                renderAllViews();
-              }
-            }).catch(() => {});
-          }
+          ensureUserSubscribed(uid);
           const recovered = extractRealProfileFromHistory(uid, newHunts, allUsers);
           allUsers[uid] = recovered;
           if (currentUser && uid === currentUser.uid && !isGenericName(recovered.moniker)) {
@@ -1101,6 +1096,13 @@
       db.ref(`booty_hunters/${dateKey}/${targetUid}/ratings/${currentUser.uid}`).set(stars);
     }
 
+    function refreshActiveHistoricIfOpen(dateKey) {
+      const modal = document.getElementById("historicModal");
+      if (activeHistoricDateKey === dateKey && modal && !modal.classList.contains("hidden")) {
+        openHistoricModal(dateKey);
+      }
+    }
+
     function postComment(dateKey, targetUid, inputId) {
       if (!currentUser) return;
       const inputEl = document.getElementById(inputId);
@@ -1115,54 +1117,49 @@
         timestamp: Date.now()
       }).then(() => {
         if (inputEl) inputEl.value = "";
+        refreshActiveHistoricIfOpen(dateKey);
       });
     }
 
-    function startEditComment(domKey) {
-      const textEl = document.getElementById(`commentText_${domKey}`);
-      const editBox = document.getElementById(`commentEditBox_${domKey}`);
-      const inputEl = document.getElementById(`commentEditInput_${domKey}`);
+    function startEditComment(commentId) {
+      const textEl = document.getElementById(`commentText_${commentId}`);
+      const editBox = document.getElementById(`commentEditBox_${commentId}`);
       if (textEl && editBox) {
         textEl.classList.add("hidden");
         editBox.classList.remove("hidden");
-        if (inputEl) {
-          inputEl.focus();
-          inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
-        }
       }
     }
 
-    function cancelEditComment(domKey) {
-      const textEl = document.getElementById(`commentText_${domKey}`);
-      const editBox = document.getElementById(`commentEditBox_${domKey}`);
+    function cancelEditComment(commentId) {
+      const textEl = document.getElementById(`commentText_${commentId}`);
+      const editBox = document.getElementById(`commentEditBox_${commentId}`);
       if (textEl && editBox) {
         textEl.classList.remove("hidden");
         editBox.classList.add("hidden");
       }
     }
 
-    function saveEditedComment(dateKey, targetUid, commentId, domKey) {
-      const inputEl = document.getElementById(`commentEditInput_${domKey}`);
+    function saveEditedComment(dateKey, targetUid, commentId, assignToUid = null) {
+      const inputEl = document.getElementById(`commentEditInput_${commentId}`);
       const newText = inputEl ? inputEl.value.trim() : "";
       if (!newText) return;
-      db.ref(`booty_hunters/${dateKey}/${targetUid}/comments/${commentId}`).update({
-        text: newText,
-        edited: true,
-        authorId: currentUser.uid,
-        authorName: userProfile.moniker
-      }).then(() => {
-        showInAppToast("Comment Updated ✏️", "Your comment has been saved.");
-      });
-    }
 
-    function assignCommentToUser(dateKey, targetUid, commentId, assignUid) {
-      const targetUser = allUsers[assignUid] || {};
-      const assignName = targetUser.moniker || "Pirate Hunter";
-      db.ref(`booty_hunters/${dateKey}/${targetUid}/comments/${commentId}`).update({
-        authorId: assignUid,
-        authorName: assignName
-      }).then(() => {
-        showInAppToast("Comment Re-Linked ⚓", `Assigned to ${assignName}.`);
+      const updates = {
+        text: newText,
+        edited: true
+      };
+
+      const targetOwnerUid = assignToUid || (currentUser && currentUser.uid);
+      if (targetOwnerUid) {
+        const ownerProfile = (allUsers[targetOwnerUid]) || (targetOwnerUid === currentUser.uid ? userProfile : {});
+        updates.authorId = targetOwnerUid;
+        if (ownerProfile.moniker && !isGenericName(ownerProfile.moniker)) {
+          updates.authorName = ownerProfile.moniker;
+        }
+      }
+
+      db.ref(`booty_hunters/${dateKey}/${targetUid}/comments/${commentId}`).update(updates).then(() => {
+        refreshActiveHistoricIfOpen(dateKey);
       });
     }
 
@@ -1170,8 +1167,10 @@
       if (!currentUser) return;
       const ref = db.ref(`booty_hunters/${dateKey}/${targetUid}/comments/${commentId}/reactions/${emojiKey}/${currentUser.uid}`);
       ref.once("value").then(snap => {
-        if (snap.exists()) ref.remove();
-        else ref.set(true);
+        if (snap.exists()) return ref.remove();
+        return ref.set(true);
+      }).then(() => {
+        refreshActiveHistoricIfOpen(dateKey);
       });
     }
 
@@ -1284,12 +1283,9 @@
       renderShowdown();
       renderLeaderboard();
       renderHistoricMaps();
-      if (activeHistoricDateKey && !document.getElementById("historicModal").classList.contains("hidden")) {
-        const activeEl = document.activeElement;
-        const isTypingInModal = activeEl && activeEl.id && activeEl.id.includes("historic_");
-        if (!isTypingInModal) {
-          openHistoricModal(activeHistoricDateKey);
-        }
+      const modal = document.getElementById("historicModal");
+      if (activeHistoricDateKey && modal && !modal.classList.contains("hidden")) {
+        openHistoricModal(activeHistoricDateKey);
       }
       if (window.lucide) lucide.createIcons();
     }
@@ -1312,7 +1308,7 @@
       }
     }
 
-    function renderPlayerCard(dateKey, uid, entry, isGoldCard, context = "showdown") {
+    function renderPlayerCard(dateKey, uid, entry, isGoldCard) {
       const liveUser = allUsers[uid] || {};
       const displayName = (!isGenericName(liveUser.moniker) ? liveUser.moniker : null)
         || (!isGenericName(entry.moniker) ? entry.moniker : null)
@@ -1335,7 +1331,7 @@
               <div class="text-4xl">🏳️</div>
               <p class="font-pirate font-bold text-xs text-white">Admitted Defeat</p>
             </div>
-            <div class="w-full">${renderCommentsSection(dateKey, uid, entry.comments, context)}</div>
+            <div class="w-full">${renderCommentsSection(dateKey, uid, entry.comments)}</div>
           </div>
         `;
       }
@@ -1376,27 +1372,27 @@
             </p>
           </div>
 
-          ${renderCommentsSection(dateKey, uid, entry.comments, context)}
+          ${renderCommentsSection(dateKey, uid, entry.comments)}
         </div>
       `;
     }
 
-    function renderCommentsSection(dateKey, targetUid, commentsObj, context = "showdown") {
+    function renderCommentsSection(dateKey, targetUid, commentsObj) {
       const comments = commentsObj || {};
       const cids = Object.keys(comments);
-      const inputId = `commentInput_${context}_${dateKey}_${targetUid}`;
-      const rivalUid = currentUser ? Object.keys(allUsers).find(u => u !== currentUser.uid) : null;
-      const rivalName = (rivalUid && allUsers[rivalUid] && allUsers[rivalUid].moniker) || "Rival";
+      const inputId = `commentInput_${dateKey}_${targetUid}`;
+      const rivalUid = getOtherKnownUid();
+      const rivalName = (rivalUid && allUsers[rivalUid] && !isGenericName(allUsers[rivalUid].moniker))
+        ? allUsers[rivalUid].moniker
+        : "Rival";
 
       const listHtml = cids.map(cid => {
         const c = comments[cid];
         const resolvedAuthor = resolveCommentAuthor(c);
-        const isMine = resolvedAuthor.isMine;
-        const isOrphaned = resolvedAuthor.isOrphaned;
-        const canEditOrClaim = isMine || isOrphaned;
+        const isMine = currentUser && resolvedAuthor.uid === currentUser.uid;
+        const canEditOrClaim = isMine || resolvedAuthor.isOrphaned;
         const authorName = resolvedAuthor.name;
         const reactions = c.reactions || {};
-        const domKey = `${context}_${cid}`;
 
         const reactionPills = REACTION_EMOJIS.map(r => {
           const count = reactions[r.key] ? Object.keys(reactions[r.key]).length : 0;
@@ -1408,20 +1404,22 @@
           <div class="bg-slate-950/55 rounded-xl p-2 text-left border border-white/10 space-y-1">
             <div class="flex items-center justify-between gap-1">
               <span class="text-[10px] font-extrabold text-amber-300 truncate">${escapeHtml(authorName)}</span>
-              ${canEditOrClaim ? `<button type="button" onclick="startEditComment('${domKey}')" class="text-[10px] text-amber-200 hover:text-white px-1" title="${isOrphaned ? "Claim & Edit" : "Edit"}">✏️</button>` : ""}
+              ${canEditOrClaim ? `<button type="button" onclick="startEditComment('${cid}')" class="text-[10px] text-amber-200 hover:text-white px-1" title="${resolvedAuthor.isOrphaned ? "Claim or Edit" : "Edit"}">✏️</button>` : ""}
             </div>
 
-            <p id="commentText_${domKey}" onclick="openCommentLightbox('${dateKey}', '${targetUid}', '${cid}')" class="text-[11px] text-white leading-snug cursor-pointer hover:text-amber-100 break-words">
+            <p id="commentText_${cid}" onclick="openCommentLightbox('${dateKey}', '${targetUid}', '${cid}')" class="text-[11px] text-white leading-snug cursor-pointer hover:text-amber-100 break-words">
               ${escapeHtml(c.text)} ${c.edited ? `<span class="text-[9px] text-slate-400 italic">(edited)</span>` : ""}
             </p>
 
             ${canEditOrClaim ? `
-              <div id="commentEditBox_${domKey}" class="hidden space-y-1 pt-1">
-                <input type="text" id="commentEditInput_${domKey}" value="${escapeHtml(c.text)}" onkeydown="if(event.key==='Enter') saveEditedComment('${dateKey}', '${targetUid}', '${cid}', '${domKey}')" class="w-full bg-slate-900 border border-amber-400 rounded-lg px-2 py-1 text-[11px] text-white" />
+              <div id="commentEditBox_${cid}" class="hidden space-y-1 pt-1">
+                <input type="text" id="commentEditInput_${cid}" value="${escapeHtml(c.text)}" class="w-full bg-slate-900 border border-amber-400 rounded-lg px-2 py-1 text-[11px] text-white" />
                 <div class="flex flex-wrap gap-1 justify-end">
-                  ${isOrphaned && rivalUid ? `<button type="button" onclick="assignCommentToUser('${dateKey}', '${targetUid}', '${cid}', '${rivalUid}')" class="text-[10px] bg-cyan-800 text-cyan-100 px-2 py-0.5 rounded">Assign to ${escapeHtml(rivalName)}</button>` : ""}
-                  <button type="button" onclick="cancelEditComment('${domKey}')" class="text-[10px] bg-slate-700 text-white px-2 py-0.5 rounded">Cancel</button>
-                  <button type="button" onclick="saveEditedComment('${dateKey}', '${targetUid}', '${cid}', '${domKey}')" class="text-[10px] bg-amber-500 text-amber-950 font-bold px-2 py-0.5 rounded">${isOrphaned ? "Claim & Save" : "Save"}</button>
+                  <button type="button" onclick="cancelEditComment('${cid}')" class="text-[10px] bg-slate-700 text-white px-2 py-0.5 rounded">Cancel</button>
+                  ${resolvedAuthor.isOrphaned && rivalUid ? `
+                    <button type="button" onclick="saveEditedComment('${dateKey}', '${targetUid}', '${cid}', '${rivalUid}')" class="text-[10px] bg-cyan-600 text-white font-bold px-2 py-0.5 rounded">Assign to ${escapeHtml(rivalName)}</button>
+                  ` : ""}
+                  <button type="button" onclick="saveEditedComment('${dateKey}', '${targetUid}', '${cid}')" class="text-[10px] bg-amber-500 text-amber-950 font-bold px-2 py-0.5 rounded">${resolvedAuthor.isOrphaned ? "Claim & Save" : "Save"}</button>
                 </div>
               </div>
             ` : ""}
@@ -1435,7 +1433,7 @@
         <div class="space-y-1.5 pt-1 border-t border-white/20">
           <div class="space-y-1.5 max-h-36 overflow-y-auto">${listHtml}</div>
           <div class="flex gap-1">
-            <input type="text" id="${inputId}" onkeydown="if(event.key==='Enter') postComment('${dateKey}', '${targetUid}', '${inputId}')" placeholder="Add a comment..." class="w-full bg-slate-950/60 border border-white/20 rounded-lg px-2 py-1 text-[11px] text-white placeholder-white/50 focus:outline-none focus:border-amber-300" />
+            <input type="text" id="${inputId}" placeholder="Add a comment..." class="w-full bg-slate-950/60 border border-white/20 rounded-lg px-2 py-1 text-[11px] text-white placeholder-white/50 focus:outline-none focus:border-amber-300" />
             <button type="button" onclick="postComment('${dateKey}', '${targetUid}', '${inputId}')" class="bg-amber-400 hover:bg-amber-300 text-amber-950 font-black px-2 py-1 rounded-lg text-[10px]">
               Send
             </button>
@@ -1477,9 +1475,9 @@
       document.getElementById("showdownLeftIcon").textContent = getAvatarEmoji(userA.avatar || entryA.avatar);
       document.getElementById("showdownRightIcon").textContent = uidB ? getAvatarEmoji(userB.avatar || entryB.avatar) : "🏴‍☠️";
 
-      let html = renderPlayerCard(todayKey, uidA, entryA, false, "showdown");
+      let html = renderPlayerCard(todayKey, uidA, entryA, false);
       if (uidB && entryB) {
-        html += renderPlayerCard(todayKey, uidB, entryB, true, "showdown");
+        html += renderPlayerCard(todayKey, uidB, entryB, true);
       } else {
         html += `
           <div class="card-gold-exact rounded-2xl p-4 flex flex-col items-center justify-center text-center shadow-xl space-y-2 border-2 border-dashed border-amber-400/50">
@@ -1517,7 +1515,7 @@
       if (!listEl) return;
 
       const stats = {};
-      Object.keys(allHunts).forEach(dKey => {
+      Object.keys(allHunts).filter(dKey => dKey <= todayKey).forEach(dKey => {
         const day = allHunts[dKey] || {};
         const entries = getPlayerEntriesForDay(day);
         const res = determineWinner(entries);
@@ -1579,7 +1577,7 @@
       const container = document.getElementById("historicLogsList");
       if (!container) return;
 
-      const dates = Object.keys(allHunts).sort().reverse();
+      const dates = Object.keys(allHunts).filter(dKey => dKey <= todayKey).sort().reverse();
       if (dates.length === 0) {
         container.innerHTML = `<p class="text-xs text-amber-200/70 text-center py-6">No past voyage logs discovered yet.</p>`;
         return;
@@ -1608,6 +1606,7 @@
     }
 
     function openHistoricModal(dateKey) {
+      if (dateKey > todayKey) return;
       activeHistoricDateKey = dateKey;
       const rawDay = allHunts[dateKey] || {};
       const dayEntries = getPlayerEntriesForDay(rawDay);
@@ -1638,8 +1637,8 @@
             <h3 class="font-serif italic text-amber-100 text-sm mt-2">"${escapeHtml(promptText)}"</h3>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            ${renderPlayerCard(dateKey, uidA, entryA, false, "historic")}
-            ${entryB ? renderPlayerCard(dateKey, uidB, entryB, true, "historic") : ""}
+            ${renderPlayerCard(dateKey, uidA, entryA, false)}
+            ${entryB ? renderPlayerCard(dateKey, uidB, entryB, true) : ""}
           </div>
         </div>
       `;
