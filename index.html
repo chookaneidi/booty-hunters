@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.7</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.8</p>
     </div>
   </div>
 
@@ -348,7 +348,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.7</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.8</p>
           </div>
         </div>
       </div>
@@ -418,63 +418,32 @@
       { key: "cannonball", emoji: "💣", label: "Cannonball" }
     ];
 
+    // 50 PROMPTS (Restored from Version 1.1)
     const PROMPTS = [
-      "Something round and soft",
-      "A giant juicy peach or melon",
-      "Two things matching in size",
-      "Something wet and slippery",
-      "Hard wood in the wild",
-      "A tight squeeze",
-      "Something dripping wet",
-      "A massive pair of knockers (door knockers!)",
-      "Something long, thick, and cylindrical",
-      "A cheeky reflection",
-      "Something furry and cute",
-      "A hidden crack in the wall",
-      "Something bursting at the seams",
-      "A sticky situation",
-      "Something bright red and glowing",
-      "A towering erection (building or monument)",
-      "Something with curves in all the right places",
-      "A tiny package with big surprises",
-      "Something shiny and golden",
-      "A wild bush that needs trimming",
-      "Something upside down",
-      "A shadow that looks suspicious",
-      "Something deliciously messy",
-      "Two balls resting together",
-      "A vintage treasure",
-      "Something completely symmetrical",
-      "A cozy little hole",
-      "Something floating on water",
-      "A dramatic cloud shape",
-      "Something striped like a zebra",
-      "A pair of giant melons at the shop",
-      "Something neon or glowing",
-      "An animal striking a pose",
-      "Something stacked high",
-      "A sign with an unfortunate typo",
-      "Something twisted into a knot",
-      "A miniature version of something huge",
-      "Something covered in foam or bubbles",
-      "A rustic keyhole or lock",
-      "Something balanced on the edge",
-      "A pair of nuts in nature",
-      "Something pastel colored",
-      "A staircase leading nowhere",
-      "Something wearing a hat",
-      "A reflection in a puddle",
-      "Something spicy",
-      "A giant sausage or hotdog",
-      "Something weathered by the sea",
-      "A funny face in an everyday object",
-      "Your best pirate loot!"
+      "Something round and soft", "Something rock hard", "The longest thing in your room",
+      "A set of two nice ovals", "Something wet and slippery", "Something hairy in an odd spot",
+      "Something that vibrates", "Something that needs a good wipe", "Something extra juicy",
+      "Something long, thin, and bendy", "Something tight that takes effort to open",
+      "Something that fits in something else", "Something you would put in your mouth",
+      "Something that fits perfectly in your hand", "Something dirty that needs washing",
+      "A pair that clearly belongs together", "Something you'd want to be wet",
+      "Something bright blue", "A curious shadow", "An unusually shaped leaf",
+      "Something vintage or retro", "Reflections in water or glass", "A handwritten sign or note",
+      "Something surprisingly tiny", "A pattern found in nature", "An item with a funny typo or name",
+      "Something vibrant yellow", "A cozy corner", "Something that makes you smile",
+      "An unexpected texture", "A cool architectural detail", "Something red in an unlikely place",
+      "Street art or a cool sticker", "Something rounder than expected", "A stack of three or more things",
+      "Something geometric", "An item that has seen better days", "Something metallic that shines",
+      "A splash of bright orange", "A sign with an unusual rule", "Something perfectly symmetrical",
+      "An object that looks like a face", "A view through a narrow gap", "Something boldly striped",
+      "High contrast light and dark", "Something green that isn't a plant", "A fancy or favorite mug",
+      "A quirky pair of socks or shoes", "Something deep purple", "A warm cup of coffee or tea"
     ];
 
-    // HARDCODED HISTORICAL PROMPT OVERRIDES (Matched to PROMPTS[5] and PROMPTS[24])
+    // HARDCODED HISTORICAL PROMPT OVERRIDES (Matched to Version 1.1 PROMPTS[11] and PROMPTS[20])
     const HARDCODED_PROMPTS = {
-      "2026-11-12": "A tight squeeze",
-      "2026-11-13": "A vintage treasure"
+      "2026-11-12": "Something that fits in something else",
+      "2026-11-13": "Something vintage or retro"
     };
 
     let currentUser = null;
