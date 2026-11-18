@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.8</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.9</p>
     </div>
   </div>
 
@@ -339,6 +339,12 @@
             <button onclick="toggleAlerts()" id="notifBtn" class="w-full bg-cove-dark hover:bg-slate-800 border border-amber-500/50 text-amber-300 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="bell" class="w-4 h-4"></i> Enable Phone Alerts 🔔
             </button>
+
+            <button onclick="triggerTestNotification()" id="testNotifBtn" class="w-full bg-cove-inner hover:bg-slate-800 border border-cyan-400/50 text-cyan-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
+              <i data-lucide="clock" class="w-4 h-4"></i> Test Notifications (30s Delay) ⏱️
+            </button>
+
+            <p id="notifStatusText" class="text-[10px] text-amber-200/80 text-center font-mono"></p>
             <p class="text-[10px] text-slate-300 text-center leading-tight">
               Tip: On iPhone/Android, tap Browser Menu → <strong>Add to Home Screen</strong> for full app & alert support!
             </p>
@@ -348,7 +354,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.8</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.9</p>
           </div>
         </div>
       </div>
@@ -446,15 +452,21 @@
       "2026-11-13": "Something vintage or retro"
     };
 
+    const APP_ICON_DATA_URI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2308434d'/%3E%3Ctext x='50' y='68' font-size='55' text-anchor='middle'%3E%F0%9F%8F%B4%E2%80%8D%E2%98%A0%EF%B8%8F%3C/text%3E%3C/svg%3E";
+
     let currentUser = null;
     let userProfile = { moniker: "Pirate Hunter", avatar: "cannonballs" };
     let allUsers = {};
     let allHunts = {};
     let todayKey = "";
     let activeHistoricDateKey = null;
-    let alertsEnabled = false;
+    let alertsEnabled = localStorage.getItem("bh_alerts_enabled") === "true";
     let lastNotifiedSignature = "";
     let last8amAlertDate = "";
+    let testNotifTimeout = null;
+    let testCountdownInterval = null;
+    let testTargetTimestamp = 0;
+    const deliveredNotifTags = new Set();
 
     function initPWA() {
       try {
@@ -466,7 +478,7 @@
           background_color: "#291546",
           theme_color: "#08434d",
           icons: [{
-            src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%2308434d'/%3E%3Ctext x='50' y='68' font-size='55' text-anchor='middle'%3E%F0%9F%8F%B4%E2%80%8D%E2%98%A0%EF%B8%8F%3C/text%3E%3C/svg%3E",
+            src: APP_ICON_DATA_URI,
             sizes: "192x192",
             type: "image/svg+xml"
           }]
@@ -474,22 +486,52 @@
         const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
         document.getElementById("pwaManifest").setAttribute("href", URL.createObjectURL(manifestBlob));
 
-        if ("serviceWorker" in navigator) {
-          const swCode = `
-            self.addEventListener('install', (e) => self.skipWaiting());
-            self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
-            self.addEventListener('notificationclick', (e) => {
-              e.notification.close();
-              e.waitUntil(clients.matchAll({ type: 'window' }).then(list => {
-                if (list.length > 0) return list[0].focus();
-                return clients.openWindow('/');
-              }));
-            });
-          `;
-          const swBlob = new Blob([swCode], { type: "application/javascript" });
-          navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
+        // Register real same-origin sw.js if hosted; never use blob: URLs which browsers reject and hang .ready forever
+        if ("serviceWorker" in navigator && window.location.protocol.startsWith("http")) {
+          navigator.serviceWorker.register("./sw.js").catch(() => {});
         }
       } catch (e) {}
+
+      if ("Notification" in window && Notification.permission === "granted" && localStorage.getItem("bh_alerts_enabled") !== "false") {
+        alertsEnabled = true;
+      }
+      updateNotifButtonUI();
+    }
+
+    function sendSystemNotification(title, body, tag = null) {
+      if (!("Notification" in window) || Notification.permission !== "granted") return;
+      if (tag && deliveredNotifTags.has(tag)) return;
+      if (tag) deliveredNotifTags.add(tag);
+
+      const options = {
+        body: body,
+        icon: APP_ICON_DATA_URI,
+        badge: APP_ICON_DATA_URI,
+        tag: tag || `bh-${Date.now()}`,
+        renotify: true
+      };
+
+      const fallbackDirect = () => {
+        try {
+          new Notification(title, options);
+        } catch (e) {}
+      };
+
+      // Race getRegistration() with 400ms so iOS Home Screen PWAs never hang when no sw.js exists
+      if ("serviceWorker" in navigator && navigator.serviceWorker.getRegistration) {
+        Promise.race([
+          navigator.serviceWorker.getRegistration(),
+          new Promise(resolve => setTimeout(() => resolve(null), 400))
+        ]).then(reg => {
+          if (reg && typeof reg.showNotification === "function") {
+            reg.showNotification(title, options).catch(fallbackDirect);
+          } else {
+            fallbackDirect();
+          }
+        }).catch(fallbackDirect);
+      } else {
+        fallbackDirect();
+      }
     }
 
     function getHuntDateKey() {
@@ -568,7 +610,7 @@
       } catch (e) {}
     }
 
-    function showInAppToast(title, body, triggerOS = false) {
+    function showInAppToast(title, body, triggerOS = false, tag = null) {
       const toast = document.getElementById("inAppToast");
       document.getElementById("toastTitle").textContent = title;
       document.getElementById("toastBody").textContent = body;
@@ -578,14 +620,8 @@
       if (toastTimeout) clearTimeout(toastTimeout);
       toastTimeout = setTimeout(hideToast, 5000);
 
-      if (triggerOS && alertsEnabled && "Notification" in window && Notification.permission === "granted") {
-        if (navigator.serviceWorker && navigator.serviceWorker.ready) {
-          navigator.serviceWorker.ready.then(reg => {
-            reg.showNotification(title, { body });
-          }).catch(() => {
-            try { new Notification(title, { body }); } catch (e) {}
-          });
-        }
+      if (triggerOS && alertsEnabled) {
+        sendSystemNotification(title, body, tag);
       }
     }
 
@@ -594,39 +630,188 @@
       toast.classList.add("opacity-0", "pointer-events-none");
     }
 
+    function isIOSDevice() {
+      return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    }
+
+    function isStandalonePWA() {
+      return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    }
+
     function toggleAlerts() {
       if (alertsEnabled) {
         alertsEnabled = false;
+        localStorage.setItem("bh_alerts_enabled", "false");
         updateNotifButtonUI();
         showInAppToast("Alerts Muted 🔕", "Phone notifications turned off.");
         return;
       }
+
       if (!("Notification" in window)) {
         alertsEnabled = true;
+        localStorage.setItem("bh_alerts_enabled", "true");
         updateNotifButtonUI();
-        showInAppToast("In-App Alerts Active 🔔", "Banner alerts enabled.");
+        if (isIOSDevice() && !isStandalonePWA()) {
+          showInAppToast("Add to Home Screen 📱", "On iPhone, tap Share → Add to Home Screen first for OS push banners!");
+        } else {
+          showInAppToast("In-App Alerts Active 🔔", "Banner alerts enabled.");
+        }
         return;
       }
+
       Notification.requestPermission().then(perm => {
-        alertsEnabled = true;
-        updateNotifButtonUI();
-        showInAppToast("Alerts Enabled 🔔", "Push & in-app alerts active!", true);
+        if (perm === "granted") {
+          alertsEnabled = true;
+          localStorage.setItem("bh_alerts_enabled", "true");
+          updateNotifButtonUI();
+          showInAppToast("Alerts Enabled 🔔", "Phone pop-up notifications are active!", true);
+        } else if (perm === "denied") {
+          alertsEnabled = false;
+          localStorage.setItem("bh_alerts_enabled", "false");
+          updateNotifButtonUI();
+          showInAppToast("Blocked by Phone Settings ⚠️", "Enable notifications for Booty Hunters in your phone Settings.");
+        } else {
+          alertsEnabled = true;
+          localStorage.setItem("bh_alerts_enabled", "true");
+          updateNotifButtonUI();
+          showInAppToast("In-App Alerts Active 🔔", "Banner alerts enabled.");
+        }
       }).catch(() => {
         alertsEnabled = true;
+        localStorage.setItem("bh_alerts_enabled", "true");
         updateNotifButtonUI();
         showInAppToast("In-App Alerts Active 🔔", "Banner alerts enabled.");
       });
     }
 
+    function triggerTestNotification() {
+      const startScheduledTest = () => {
+        alertsEnabled = true;
+        localStorage.setItem("bh_alerts_enabled", "true");
+        updateNotifButtonUI();
+
+        if (testNotifTimeout) clearTimeout(testNotifTimeout);
+        if (testCountdownInterval) clearInterval(testCountdownInterval);
+
+        const testTag = `bh-test-${Date.now()}`;
+        const testTitle = "🏴‍☠️ Booty Hunters Test Alert!";
+        const testBody = "Ahoy! Background phone notifications are working!";
+        testTargetTimestamp = Date.now() + 30000;
+
+        // Also ask active Service Worker (if installed) to schedule the notification in the background
+        if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: "SCHEDULE_NOTIFICATION",
+            title: testTitle,
+            body: testBody,
+            tag: testTag,
+            delayMs: 30000
+          });
+        }
+
+        const btn = document.getElementById("testNotifBtn");
+        const fireTestNow = () => {
+          if (!testTargetTimestamp) return;
+          testTargetTimestamp = 0;
+          if (testNotifTimeout) clearTimeout(testNotifTimeout);
+          if (testCountdownInterval) clearInterval(testCountdownInterval);
+          testNotifTimeout = null;
+          testCountdownInterval = null;
+          sendSystemNotification(testTitle, testBody, testTag);
+          showInAppToast(testTitle, testBody, false);
+          updateCountdownBtn();
+        };
+
+        const updateCountdownBtn = () => {
+          if (!btn) return;
+          const remaining = testTargetTimestamp ? Math.max(0, Math.ceil((testTargetTimestamp - Date.now()) / 1000)) : 0;
+          if (remaining > 0) {
+            btn.innerHTML = `<i data-lucide="hourglass" class="w-4 h-4"></i> Sending in ${remaining}s... (Minimize app now)`;
+            btn.className = "w-full bg-amber-500/30 border border-amber-300 text-amber-100 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5";
+          } else {
+            btn.innerHTML = `<i data-lucide="clock" class="w-4 h-4"></i> Test Notifications (30s Delay) ⏱️`;
+            btn.className = "w-full bg-cove-inner hover:bg-slate-800 border border-cyan-400/50 text-cyan-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5";
+          }
+          if (window.lucide) lucide.createIcons();
+        };
+
+        updateCountdownBtn();
+        showInAppToast("Test Scheduled ⏱️", "Minimize or lock your phone now—alert arrives in 30s!");
+
+        testCountdownInterval = setInterval(() => {
+          if (testTargetTimestamp && Date.now() >= testTargetTimestamp) {
+            fireTestNow();
+          } else {
+            updateCountdownBtn();
+          }
+        }, 1000);
+
+        testNotifTimeout = setTimeout(fireTestNow, 30000);
+      };
+
+      if (!("Notification" in window)) {
+        if (isIOSDevice() && !isStandalonePWA()) {
+          showInAppToast("Home Screen Required 📱", "On iPhone, tap Share → Add to Home Screen first, then open the icon!");
+        } else {
+          showInAppToast("Not Supported ⚠️", "This browser does not support OS pop-up notifications.");
+        }
+        return;
+      }
+
+      if (Notification.permission === "granted") {
+        startScheduledTest();
+      } else if (Notification.permission === "denied") {
+        showInAppToast("Blocked in Settings ⚠️", "Notifications are blocked—enable them in your phone Settings.");
+      } else {
+        Notification.requestPermission().then(perm => {
+          if (perm === "granted") {
+            startScheduledTest();
+          } else {
+            showInAppToast("Permission Needed ⚠️", "Please tap Allow when prompted so notifications can appear.");
+          }
+        });
+      }
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (testTargetTimestamp && Date.now() >= testTargetTimestamp && testNotifTimeout) {
+        clearTimeout(testNotifTimeout);
+        testNotifTimeout = null;
+        if (testCountdownInterval) {
+          clearInterval(testCountdownInterval);
+          testCountdownInterval = null;
+        }
+        testTargetTimestamp = 0;
+        const btn = document.getElementById("testNotifBtn");
+        if (btn) {
+          btn.innerHTML = `<i data-lucide="clock" class="w-4 h-4"></i> Test Notifications (30s Delay) ⏱️`;
+          btn.className = "w-full bg-cove-inner hover:bg-slate-800 border border-cyan-400/50 text-cyan-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5";
+          if (window.lucide) lucide.createIcons();
+        }
+        sendSystemNotification("🏴‍☠️ Booty Hunters Test Alert!", "Ahoy! Background phone notifications are working!", `bh-test-${Date.now()}`);
+      }
+    });
+
     function updateNotifButtonUI() {
       const btn = document.getElementById("notifBtn");
-      if (!btn) return;
-      if (alertsEnabled) {
-        btn.innerHTML = `<i data-lucide="bell-ring" class="w-4 h-4"></i> Alerts Active (Tap to Mute) 🔔`;
-        btn.className = "w-full bg-emerald-900/70 hover:bg-emerald-800 border border-emerald-400 text-emerald-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5";
-      } else {
-        btn.innerHTML = `<i data-lucide="bell" class="w-4 h-4"></i> Enable Phone Alerts 🔔`;
-        btn.className = "w-full bg-cove-dark hover:bg-slate-800 border border-amber-500/50 text-amber-300 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5";
+      const statusEl = document.getElementById("notifStatusText");
+      if (btn) {
+        if (alertsEnabled) {
+          btn.innerHTML = `<i data-lucide="bell-ring" class="w-4 h-4"></i> Alerts Active (Tap to Mute) 🔔`;
+          btn.className = "w-full bg-emerald-900/70 hover:bg-emerald-800 border border-emerald-400 text-emerald-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5";
+        } else {
+          btn.innerHTML = `<i data-lucide="bell" class="w-4 h-4"></i> Enable Phone Alerts 🔔`;
+          btn.className = "w-full bg-cove-dark hover:bg-slate-800 border border-amber-500/50 text-amber-300 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5";
+        }
+      }
+      if (statusEl) {
+        if (!("Notification" in window)) {
+          statusEl.textContent = isIOSDevice() && !isStandalonePWA()
+            ? "Status: Add to Home Screen on iPhone to unlock OS alerts"
+            : "Status: OS notifications unavailable in this browser";
+        } else {
+          statusEl.textContent = `Phone Permission: ${Notification.permission.toUpperCase()} • Alerts: ${alertsEnabled ? "ON" : "OFF"}`;
+        }
       }
       if (window.lucide) lucide.createIcons();
     }
@@ -644,7 +829,7 @@
       const now = new Date();
       if (now.getHours() === 8 && now.getMinutes() === 0 && last8amAlertDate !== todayKey) {
         last8amAlertDate = todayKey;
-        showInAppToast("📜 New 8:00 AM Target!", `Today's Hunt: "${getPromptForDate(todayKey)}"`, true);
+        showInAppToast("📜 New 8:00 AM Target!", `Today's Hunt: "${getPromptForDate(todayKey)}"`, true, `8am-${todayKey}`);
       }
     }, 30000);
 
@@ -915,17 +1100,22 @@
           }
         }
         if (entry.comments) {
+          const oldComments = (oldTodayData[uid] && oldTodayData[uid].comments) || {};
           Object.keys(entry.comments).forEach(cid => {
             const c = entry.comments[cid];
             const reactStr = c.reactions ? JSON.stringify(c.reactions) : "";
             sigParts.push(`c:${cid}:${c.text}:${reactStr}`);
+            const cAuthor = resolveCommentAuthor(c);
+            if (allHunts[todayKey] && !oldComments[cid] && cAuthor.uid !== currentUser.uid && !alertMsg) {
+              alertMsg = `💬 ${cAuthor.name}: "${c.text}"`;
+            }
           });
         }
       });
 
       const currentSig = sigParts.sort().join("|");
       if (lastNotifiedSignature && currentSig !== lastNotifiedSignature && alertMsg) {
-        showInAppToast("Ahoy!", alertMsg, true);
+        showInAppToast("Ahoy!", alertMsg, true, `hunt-${todayKey}-${Date.now()}`);
       }
       lastNotifiedSignature = currentSig;
     }
@@ -938,6 +1128,7 @@
       });
       const targetEl = document.getElementById("view" + tabName.charAt(0).toUpperCase() + tabName.slice(1));
       if (targetEl) targetEl.classList.remove("hidden");
+      if (tabName === "profile") updateNotifButtonUI();
       if (window.lucide) lucide.createIcons();
     }
 
