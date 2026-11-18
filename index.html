@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.1</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.2</p>
     </div>
   </div>
 
@@ -354,7 +354,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.1</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.2</p>
           </div>
         </div>
       </div>
@@ -405,16 +405,16 @@
     const PUSH_WORKER_URL = "https://booty-push.chookaneidi.workers.dev";
     const VAPID_PUBLIC_KEY = "BHQI_FuqibX_IpUW6lR0hWjDTg6Lx8MlgeUd-2DOvvVxstKHo5uGP5-WVwG5tnSVyJwQSiB6JfGczy38qYR2gZQ";
 
-    // CLASSIC VERSION 1.1 AVATARS (Cardboard box chest & mermaid hook)
+    // EXACT VERSION 1.1 AVATARS (Restored Parrot 🦜, Peg-Leg 🪵, and Gold Coin 🪙)
     const AVATARS = [
       { id: "cannonballs", icon: "💣", name: "Double Cannonballs" },
       { id: "chest", icon: "📦", name: "The Grand Chest" },
       { id: "spyglass", icon: "🔭", name: "Peep Spyglass" },
       { id: "peach", icon: "🍑", name: "The Sailor's Peach" },
       { id: "hook", icon: "🧜‍♀️", name: "Siren's Hook" },
-      { id: "cracker", icon: "🍪", name: "Polly's Cracker" },
-      { id: "jolly", icon: "🏴‍☠️", name: "Jolly Roger" },
-      { id: "doubloons", icon: "💰", name: "Golden Doubloons" }
+      { id: "cracker", icon: "🦜", name: "Polly's Cracker" },
+      { id: "pegleg", icon: "🪵", name: "Peg-Leg" },
+      { id: "doubloons", icon: "🪙", name: "Golden Doubloons" }
     ];
 
     const REACTION_EMOJIS = [
@@ -641,6 +641,7 @@
     }
 
     function getAvatarEmoji(avatarId) {
+      if (avatarId === "jolly") return "🏴‍☠️";
       const found = AVATARS.find(a => a.id === avatarId);
       return found ? found.icon : "💣";
     }
@@ -1916,18 +1917,130 @@
         const entries = getPlayerEntriesForDay(day);
         const promptText = HARDCODED_PROMPTS[dKey] || day._prompt || getPromptForDate(dKey);
         const uids = Object.keys(entries);
+        const res = determineWinner(entries);
+
+        // Compute Star Winner & Speed Winner mini summary
+        let starSummary = "No ratings yet";
+        let speedSummary = "Awaiting hunts";
+
+        if (uids.length > 0) {
+          let bestStars = -1;
+          let starLeaders = [];
+          let bestTime = Infinity;
+          let speedLeaders = [];
+
+          uids.forEach(uid => {
+            const e = entries[uid];
+            const u = allUsers[uid] || {};
+            const pName = (!isGenericName(u.moniker) ? u.moniker : null) || (!isGenericName(e.moniker) ? e.moniker : null) || e.authorName || "Pirate";
+
+            if (!e.defeated) {
+              const avg = getAverageStars(e.ratings);
+              if (avg > 0) {
+                if (avg > bestStars) {
+                  bestStars = avg;
+                  starLeaders = [pName];
+                } else if (avg === bestStars) {
+                  starLeaders.push(pName);
+                }
+              }
+
+              if (typeof e.elapsedSeconds === "number" && e.elapsedSeconds < 999990) {
+                if (e.elapsedSeconds < bestTime) {
+                  bestTime = e.elapsedSeconds;
+                  speedLeaders = [pName];
+                } else if (e.elapsedSeconds === bestTime) {
+                  speedLeaders.push(pName);
+                }
+              }
+            }
+          });
+
+          if (starLeaders.length === 1) {
+            starSummary = `${starLeaders[0]} (${bestStars.toFixed(1)}★)`;
+          } else if (starLeaders.length > 1) {
+            starSummary = `Tie (${bestStars.toFixed(1)}★)`;
+          }
+
+          if (speedLeaders.length === 1) {
+            speedSummary = `${speedLeaders[0]} (${formatDuration(bestTime)})`;
+          } else if (speedLeaders.length > 1) {
+            speedSummary = `Tie (${formatDuration(bestTime)})`;
+          }
+        }
+
+        // Overall Winner / Draw Badge
+        let overallLabel = "⏳ In Progress";
+        if (res.status === "winner" && res.winnerUid) {
+          const wUser = allUsers[res.winnerUid] || entries[res.winnerUid] || {};
+          const wName = (!isGenericName(wUser.moniker) ? wUser.moniker : null) || entries[res.winnerUid]?.authorName || "Winner";
+          overallLabel = `👑 Victor: ${escapeHtml(wName)}`;
+        } else if (res.status === "draw") {
+          overallLabel = "🤝 Result: Draw!";
+        }
+
+        // Mini Photo Thumbnails Preview
+        const miniPreviewsHtml = uids.length > 0 ? `
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            ${uids.slice(0, 2).map(uid => {
+              const e = entries[uid];
+              const u = allUsers[uid] || {};
+              const pName = (!isGenericName(u.moniker) ? u.moniker : null) || (!isGenericName(e.moniker) ? e.moniker : null) || e.authorName || "Pirate";
+              const pIcon = getAvatarEmoji(u.avatar || e.avatar || e.avatarId);
+              const avg = getAverageStars(e.ratings);
+              const commentCount = e.comments ? Object.keys(e.comments).length : 0;
+
+              return `
+                <div class="bg-slate-950/55 border border-amber-500/30 rounded-lg p-1.5 flex items-center gap-2">
+                  ${e.defeated || !e.image
+                    ? `<div class="w-11 h-11 rounded-md bg-rose-950/70 border border-rose-500/40 flex items-center justify-center text-base shrink-0">🏳️</div>`
+                    : `<img src="${e.image}" class="w-11 h-11 rounded-md object-cover border border-amber-400/50 shrink-0 bg-slate-900" />`
+                  }
+                  <div class="min-w-0 flex-1 text-left">
+                    <p class="text-[10px] font-bold text-white truncate">${pIcon} ${escapeHtml(pName)}</p>
+                    <p class="text-[9px] text-amber-300 font-bold">${e.defeated ? "Defeated" : `${avg.toFixed(1)}★ • ⚡${formatDuration(e.elapsedSeconds)}`}</p>
+                    ${commentCount > 0 ? `<p class="text-[9px] text-slate-300">💬 ${commentCount} comment${commentCount === 1 ? "" : "s"}</p>` : ""}
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        ` : `<p class="text-[10px] text-slate-400 italic">No submissions logged for this date.</p>`;
 
         return `
-          <div onclick="openHistoricModal('${dKey}')" class="bg-cove-dark/90 border border-amber-500/40 rounded-xl p-3 shadow-lg cursor-pointer hover:border-amber-300 transition flex items-center justify-between gap-3 relative">
-            <div class="absolute -left-6 top-1/2 -translate-y-1/2 w-4 h-4 bg-rose-700 border-2 border-amber-300 rounded-sm flex items-center justify-center text-[9px] font-bold text-white shadow">X</div>
-            <div class="space-y-1 pl-2">
-              <div class="flex items-center gap-2">
-                <span class="text-[10px] font-black text-amber-300 bg-cove-inner px-2.5 py-0.5 rounded-full">${dKey}</span>
-                <span class="text-[10px] text-slate-300">${uids.length} Hunters</span>
-              </div>
-              <p class="font-serif italic text-xs text-white">"${escapeHtml(promptText)}"</p>
+          <div onclick="openHistoricModal('${dKey}')" class="bg-cove-dark/95 border border-amber-500/50 hover:border-amber-300 rounded-xl p-3 shadow-lg cursor-pointer transition space-y-2 relative group">
+            <!-- Classic Red X on the dashed map trail -->
+            <div class="absolute -left-[29px] top-4 text-sm select-none drop-shadow">❌</div>
+
+            <!-- Top Row: Date + Victor Badge -->
+            <div class="flex items-center justify-between gap-2 border-b border-amber-800/40 pb-1.5">
+              <span class="text-[11px] font-pirate font-black text-amber-300 bg-cove-inner px-2.5 py-0.5 rounded-full border border-amber-500/30">${dKey}</span>
+              <span class="text-[10px] font-extrabold text-amber-200 bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-600/50">${overallLabel}</span>
             </div>
-            <span class="text-amber-300 text-sm font-bold pr-1">🗺️ View</span>
+
+            <!-- Prompt Text -->
+            <p class="font-serif italic text-xs text-amber-100 leading-snug">"${escapeHtml(promptText)}"</p>
+
+            <!-- Mini Winner Pills (Star Winner & Speed Winner) -->
+            <div class="flex flex-wrap gap-1.5 text-[10px]">
+              <span class="bg-slate-950/60 border border-amber-500/30 text-amber-300 font-bold px-2 py-0.5 rounded-md">
+                ⭐ Stars: ${escapeHtml(starSummary)}
+              </span>
+              <span class="bg-slate-950/60 border border-cyan-500/30 text-cyan-200 font-bold px-2 py-0.5 rounded-md">
+                ⚡ Speed: ${escapeHtml(speedSummary)}
+              </span>
+            </div>
+
+            <!-- Mini Photo Thumbnails -->
+            ${miniPreviewsHtml}
+
+            <!-- Bottom Action Bar with Magnifying Glass & View More Button -->
+            <div class="flex items-center justify-between pt-1 border-t border-amber-800/30">
+              <span class="text-[10px] text-slate-300">${uids.length} Hunter${uids.length === 1 ? "" : "s"} logged</span>
+              <button type="button" onclick="event.stopPropagation(); openHistoricModal('${dKey}')" class="btn-gold px-3 py-1 rounded-lg text-[10px] font-extrabold flex items-center gap-1 shadow">
+                🔍 View More
+              </button>
+            </div>
           </div>
         `;
       }).join("");
