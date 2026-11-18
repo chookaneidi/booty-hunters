@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.6</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 2.7</p>
     </div>
   </div>
 
@@ -348,7 +348,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.6</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 2.7</p>
           </div>
         </div>
       </div>
@@ -471,6 +471,12 @@
       "Your best pirate loot!"
     ];
 
+    // HARDCODED HISTORICAL PROMPT OVERRIDES (Matched to PROMPTS[5] and PROMPTS[24])
+    const HARDCODED_PROMPTS = {
+      "2026-11-12": "A tight squeeze",
+      "2026-11-13": "A vintage treasure"
+    };
+
     let currentUser = null;
     let userProfile = { moniker: "Pirate Hunter", avatar: "cannonballs" };
     let allUsers = {};
@@ -529,6 +535,9 @@
     }
 
     function getPromptForDate(dateKey) {
+      if (HARDCODED_PROMPTS[dateKey]) {
+        return HARDCODED_PROMPTS[dateKey];
+      }
       let hash = 0;
       for (let i = 0; i < dateKey.length; i++) {
         hash = (hash * 31 + dateKey.charCodeAt(i)) % 100000;
@@ -658,7 +667,7 @@
       const newKey = getHuntDateKey();
       if (newKey !== todayKey) {
         todayKey = newKey;
-        const promptForToday = (allHunts[todayKey] && allHunts[todayKey]._prompt) || getPromptForDate(todayKey);
+        const promptForToday = HARDCODED_PROMPTS[todayKey] || (allHunts[todayKey] && allHunts[todayKey]._prompt) || getPromptForDate(todayKey);
         document.getElementById("todayPromptText").textContent = `"${promptForToday}"`;
         db.ref(`booty_hunters/${todayKey}/_prompt`).transaction(curr => curr || promptForToday);
         renderAllViews();
@@ -801,7 +810,6 @@
         }
       }
 
-      // If no UID was stored on the comment, try matching by exact moniker
       let resolvedUid = cUid;
       if (!resolvedUid && resolvedName) {
         const matchedUid = Object.keys(allUsers).find(u => {
@@ -840,14 +848,12 @@
       const defaultTodayPrompt = getPromptForDate(todayKey);
       document.getElementById("todayPromptText").textContent = `"${defaultTodayPrompt}"`;
 
-      const currentMonthPrefix = todayKey.slice(0, 8);
-      const day12Key = `${currentMonthPrefix}12`;
-      const day13Key = `${currentMonthPrefix}13`;
+      // Force-correct the saved prompts for Nov 12 & Nov 13 in Firebase
+      Object.keys(HARDCODED_PROMPTS).forEach(fixedDateKey => {
+        db.ref(`booty_hunters/${fixedDateKey}/_prompt`).set(HARDCODED_PROMPTS[fixedDateKey]);
+      });
 
-      db.ref(`booty_hunters/${day12Key}/_prompt`).transaction(curr => curr || getPromptForDate(day12Key));
-      db.ref(`booty_hunters/${day13Key}/_prompt`).transaction(curr => curr || getPromptForDate(day13Key));
-
-      if (todayKey !== day12Key && todayKey !== day13Key) {
+      if (!HARDCODED_PROMPTS[todayKey]) {
         db.ref(`booty_hunters/${todayKey}/_prompt`).transaction(curr => curr || defaultTodayPrompt);
       }
 
@@ -876,8 +882,9 @@
 
       db.ref("booty_hunters").on("value", snap => {
         const newHunts = snap.val() || {};
-        if (newHunts[todayKey] && newHunts[todayKey]._prompt) {
-          document.getElementById("todayPromptText").textContent = `"${newHunts[todayKey]._prompt}"`;
+        const resolvedTodayPrompt = HARDCODED_PROMPTS[todayKey] || (newHunts[todayKey] && newHunts[todayKey]._prompt);
+        if (resolvedTodayPrompt) {
+          document.getElementById("todayPromptText").textContent = `"${resolvedTodayPrompt}"`;
         }
 
         const discoveredUids = new Set(Object.keys(allUsers));
@@ -1586,7 +1593,7 @@
       container.innerHTML = dates.map(dKey => {
         const day = allHunts[dKey] || {};
         const entries = getPlayerEntriesForDay(day);
-        const promptText = day._prompt || getPromptForDate(dKey);
+        const promptText = HARDCODED_PROMPTS[dKey] || day._prompt || getPromptForDate(dKey);
         const uids = Object.keys(entries);
 
         return `
@@ -1610,7 +1617,7 @@
       activeHistoricDateKey = dateKey;
       const rawDay = allHunts[dateKey] || {};
       const dayEntries = getPlayerEntriesForDay(rawDay);
-      const promptText = rawDay._prompt || getPromptForDate(dateKey);
+      const promptText = HARDCODED_PROMPTS[dateKey] || rawDay._prompt || getPromptForDate(dateKey);
       const uids = Object.keys(dayEntries);
       const container = document.getElementById("historicModalContent");
 
