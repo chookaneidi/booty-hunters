@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.0</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.1</p>
     </div>
   </div>
 
@@ -354,7 +354,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.0</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.1</p>
           </div>
         </div>
       </div>
@@ -1159,38 +1159,85 @@
     }
 
     function checkPartnerActivityAndNotify(newHunts) {
-      if (!currentUser || !newHunts[todayKey]) return;
-      const todayData = getPlayerEntriesForDay(newHunts[todayKey]);
-      const oldTodayData = getPlayerEntriesForDay(allHunts[todayKey]);
+      if (!currentUser || !newHunts) return;
       let sigParts = [];
       let alertMsg = null;
+      const hadPreviousState = Object.keys(allHunts || {}).length > 0;
 
-      Object.keys(todayData).forEach(uid => {
-        const entry = todayData[uid];
-        const partnerName = (allUsers[uid] && allUsers[uid].moniker) || entry.moniker || "Your Rival";
-        if (uid !== currentUser.uid) {
-          sigParts.push(`u:${uid}:${entry.timestamp || ""}:${entry.defeated || ""}`);
-          if (allHunts[todayKey] && !oldTodayData[uid]) {
-            alertMsg = entry.defeated ? `🏳️ ${partnerName} admitted defeat!` : `📸 ${partnerName} uploaded booty!`;
-          }
-        }
-        if (entry.comments) {
-          const oldComments = (oldTodayData[uid] && oldTodayData[uid].comments) || {};
-          Object.keys(entry.comments).forEach(cid => {
-            const c = entry.comments[cid];
-            const reactStr = c.reactions ? JSON.stringify(c.reactions) : "";
-            sigParts.push(`c:${cid}:${c.text}:${reactStr}`);
-            const cAuthor = resolveCommentAuthor(c);
-            if (allHunts[todayKey] && !oldComments[cid] && cAuthor.uid !== currentUser.uid && !alertMsg) {
-              alertMsg = `💬 ${cAuthor.name}: "${c.text}"`;
+      // Scan all unlocked hunt days (today + historic maps)
+      Object.keys(newHunts).filter(dKey => dKey <= todayKey).sort().forEach(dKey => {
+        const dayData = getPlayerEntriesForDay(newHunts[dKey]);
+        const oldDayData = getPlayerEntriesForDay(allHunts[dKey]);
+
+        Object.keys(dayData).forEach(uid => {
+          const entry = dayData[uid];
+          const oldEntry = oldDayData[uid] || {};
+          const partnerName = (allUsers[uid] && allUsers[uid].moniker) || entry.moniker || "Your Rival";
+
+          // 1. Partner uploaded photo or admitted defeat on today's hunt
+          if (dKey === todayKey && uid !== currentUser.uid) {
+            sigParts.push(`u:${dKey}:${uid}:${entry.timestamp || ""}:${entry.defeated || ""}`);
+            if (hadPreviousState && !oldDayData[uid] && !alertMsg) {
+              alertMsg = entry.defeated
+                ? `🏳️ ${partnerName} admitted defeat today!`
+                : `📸 ${partnerName} uploaded booty for today's hunt!`;
             }
-          });
-        }
+          }
+
+          // 2. Partner rated YOUR photo (today or past map)
+          if (uid === currentUser.uid && entry.ratings) {
+            const oldRatings = oldEntry.ratings || {};
+            Object.keys(entry.ratings).forEach(raterUid => {
+              const stars = entry.ratings[raterUid];
+              sigParts.push(`r:${dKey}:${uid}:${raterUid}:${stars}`);
+              if (hadPreviousState && raterUid !== currentUser.uid && oldRatings[raterUid] !== stars && !alertMsg) {
+                const raterName = (allUsers[raterUid] && allUsers[raterUid].moniker) || "Your Rival";
+                const dayLabel = dKey === todayKey ? "your booty" : `your ${dKey} booty`;
+                alertMsg = `⭐ ${raterName} rated ${dayLabel} ${stars} ${stars === 1 ? "star" : "stars"}!`;
+              }
+            });
+          }
+
+          // 3. New comments & emoji reactions (today or past map)
+          if (entry.comments) {
+            const oldComments = oldEntry.comments || {};
+            Object.keys(entry.comments).forEach(cid => {
+              const c = entry.comments[cid];
+              const oldC = oldComments[cid];
+              const reactStr = c.reactions ? JSON.stringify(c.reactions) : "";
+              sigParts.push(`c:${dKey}:${cid}:${c.text}:${reactStr}`);
+
+              const cAuthor = resolveCommentAuthor(c);
+
+              // New comment posted by partner
+              if (hadPreviousState && !oldC && cAuthor.uid !== currentUser.uid && !alertMsg) {
+                alertMsg = dKey === todayKey
+                  ? `💬 ${cAuthor.name}: "${c.text}"`
+                  : `🗺️ ${cAuthor.name} commented on ${dKey}: "${c.text}"`;
+              }
+
+              // New emoji reaction added by partner
+              if (hadPreviousState && oldC && c.reactions && !alertMsg) {
+                const oldReacts = oldC.reactions || {};
+                REACTION_EMOJIS.forEach(rObj => {
+                  const currMap = c.reactions[rObj.key] || {};
+                  const prevMap = oldReacts[rObj.key] || {};
+                  Object.keys(currMap).forEach(reactorUid => {
+                    if (reactorUid !== currentUser.uid && !prevMap[reactorUid] && !alertMsg) {
+                      const reactorName = (allUsers[reactorUid] && allUsers[reactorUid].moniker) || "Your Rival";
+                      alertMsg = `${rObj.emoji} ${reactorName} reacted to "${c.text}"`;
+                    }
+                  });
+                });
+              }
+            });
+          }
+        });
       });
 
       const currentSig = sigParts.sort().join("|");
       if (lastNotifiedSignature && currentSig !== lastNotifiedSignature && alertMsg) {
-        showInAppToast("Ahoy!", alertMsg, true, `hunt-${todayKey}-${Date.now()}`);
+        showInAppToast("Ahoy!", alertMsg, true, `hunt-${Date.now()}`);
       }
       lastNotifiedSignature = currentSig;
     }
@@ -1345,7 +1392,15 @@
 
     function rateSubmission(dateKey, targetUid, stars) {
       if (!currentUser || targetUid === currentUser.uid) return;
-      db.ref(`booty_hunters/${dateKey}/${targetUid}/ratings/${currentUser.uid}`).set(stars);
+      db.ref(`booty_hunters/${dateKey}/${targetUid}/ratings/${currentUser.uid}`).set(stars).then(() => {
+        const dayLabel = dateKey === todayKey ? "your booty" : `your ${dateKey} booty`;
+        notifyPartnerViaCloudflare(
+          "🏴‍☠️ Booty Hunters",
+          `⭐ ${userProfile.moniker} rated ${dayLabel} ${stars} ${stars === 1 ? "star" : "stars"}!`,
+          `rate-${dateKey}-${targetUid}-${stars}`
+        );
+        refreshActiveHistoricIfOpen(dateKey);
+      });
     }
 
     function refreshActiveHistoricIfOpen(dateKey) {
@@ -1369,9 +1424,12 @@
         timestamp: Date.now()
       }).then(() => {
         if (inputEl) inputEl.value = "";
+        const pushBody = dateKey === todayKey
+          ? `💬 ${userProfile.moniker}: "${text}"`
+          : `🗺️ ${userProfile.moniker} commented on ${dateKey}: "${text}"`;
         notifyPartnerViaCloudflare(
           "🏴‍☠️ Booty Hunters",
-          `💬 ${userProfile.moniker}: "${text}"`,
+          pushBody,
           `comment-${newRef.key}`
         );
         refreshActiveHistoricIfOpen(dateKey);
@@ -1424,8 +1482,21 @@
       if (!currentUser) return;
       const ref = db.ref(`booty_hunters/${dateKey}/${targetUid}/comments/${commentId}/reactions/${emojiKey}/${currentUser.uid}`);
       ref.once("value").then(snap => {
-        if (snap.exists()) return ref.remove();
-        return ref.set(true);
+        if (snap.exists()) {
+          return ref.remove();
+        }
+        return ref.set(true).then(() => {
+          const entry = allHunts[dateKey] && allHunts[dateKey][targetUid];
+          const comment = entry && entry.comments && entry.comments[commentId];
+          const rObj = REACTION_EMOJIS.find(r => r.key === emojiKey);
+          const emojiChar = rObj ? rObj.emoji : "🏴‍☠️";
+          const snippet = comment && comment.text ? comment.text : "your comment";
+          notifyPartnerViaCloudflare(
+            "🏴‍☠️ Booty Hunters",
+            `${emojiChar} ${userProfile.moniker} reacted to "${snippet}"`,
+            `react-${commentId}-${emojiKey}-${currentUser.uid}`
+          );
+        });
       }).then(() => {
         refreshActiveHistoricIfOpen(dateKey);
       });
