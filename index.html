@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.2</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.3</p>
     </div>
   </div>
 
@@ -354,7 +354,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.2</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.3</p>
           </div>
         </div>
       </div>
@@ -1918,10 +1918,13 @@
         const promptText = HARDCODED_PROMPTS[dKey] || day._prompt || getPromptForDate(dKey);
         const uids = Object.keys(entries);
         const res = determineWinner(entries);
+        const isPastDay = dKey < todayKey;
+        const isForfeited = isPastDay && uids.length < 2;
 
-        // Compute Star Winner & Speed Winner mini summary
-        let starSummary = "No ratings yet";
-        let speedSummary = "Awaiting hunts";
+        // Compute Star Winner, Speed Winner & Total Comments
+        let starSummary = "—";
+        let speedSummary = "—";
+        let totalComments = 0;
 
         if (uids.length > 0) {
           let bestStars = -1;
@@ -1933,6 +1936,10 @@
             const e = entries[uid];
             const u = allUsers[uid] || {};
             const pName = (!isGenericName(u.moniker) ? u.moniker : null) || (!isGenericName(e.moniker) ? e.moniker : null) || e.authorName || "Pirate";
+
+            if (e.comments) {
+              totalComments += Object.keys(e.comments).length;
+            }
 
             if (!e.defeated) {
               const avg = getAverageStars(e.ratings);
@@ -1969,75 +1976,81 @@
           }
         }
 
-        // Overall Winner / Draw Badge
+        // Overall Winner / Draw / Forfeited Badge
         let overallLabel = "⏳ In Progress";
+        let badgeStyle = "text-amber-200 bg-amber-950/80 border-amber-600/50";
         if (res.status === "winner" && res.winnerUid) {
           const wUser = allUsers[res.winnerUid] || entries[res.winnerUid] || {};
           const wName = (!isGenericName(wUser.moniker) ? wUser.moniker : null) || entries[res.winnerUid]?.authorName || "Winner";
           overallLabel = `👑 Victor: ${escapeHtml(wName)}`;
         } else if (res.status === "draw") {
           overallLabel = "🤝 Result: Draw!";
+        } else if (isForfeited) {
+          overallLabel = "🏳️ Forfeited";
+          badgeStyle = "text-rose-200 bg-rose-950/80 border-rose-500/50";
         }
 
-        // Mini Photo Thumbnails Preview
+        // Clean Mini Photo Previews (Only Thumbnail + Avatar/Name; no duplicate stats)
         const miniPreviewsHtml = uids.length > 0 ? `
-          <div class="grid grid-cols-2 gap-2 pt-1">
+          <div class="grid grid-cols-2 gap-2 pt-0.5">
             ${uids.slice(0, 2).map(uid => {
               const e = entries[uid];
               const u = allUsers[uid] || {};
               const pName = (!isGenericName(u.moniker) ? u.moniker : null) || (!isGenericName(e.moniker) ? e.moniker : null) || e.authorName || "Pirate";
               const pIcon = getAvatarEmoji(u.avatar || e.avatar || e.avatarId);
-              const avg = getAverageStars(e.ratings);
-              const commentCount = e.comments ? Object.keys(e.comments).length : 0;
 
               return `
-                <div class="bg-slate-950/55 border border-amber-500/30 rounded-lg p-1.5 flex items-center gap-2">
+                <div class="bg-slate-950/45 border border-amber-500/25 rounded-lg p-1.5 flex items-center gap-2">
                   ${e.defeated || !e.image
-                    ? `<div class="w-11 h-11 rounded-md bg-rose-950/70 border border-rose-500/40 flex items-center justify-center text-base shrink-0">🏳️</div>`
-                    : `<img src="${e.image}" class="w-11 h-11 rounded-md object-cover border border-amber-400/50 shrink-0 bg-slate-900" />`
+                    ? `<div class="w-10 h-10 rounded-md bg-rose-950/70 border border-rose-500/40 flex items-center justify-center text-sm shrink-0">🏳️</div>`
+                    : `<img src="${e.image}" class="w-10 h-10 rounded-md object-cover border border-amber-400/40 shrink-0 bg-slate-900" />`
                   }
-                  <div class="min-w-0 flex-1 text-left">
-                    <p class="text-[10px] font-bold text-white truncate">${pIcon} ${escapeHtml(pName)}</p>
-                    <p class="text-[9px] text-amber-300 font-bold">${e.defeated ? "Defeated" : `${avg.toFixed(1)}★ • ⚡${formatDuration(e.elapsedSeconds)}`}</p>
-                    ${commentCount > 0 ? `<p class="text-[9px] text-slate-300">💬 ${commentCount} comment${commentCount === 1 ? "" : "s"}</p>` : ""}
-                  </div>
+                  <span class="text-[11px] font-bold text-white truncate">${pIcon} ${escapeHtml(pName)}</span>
                 </div>
               `;
             }).join("")}
           </div>
-        ` : `<p class="text-[10px] text-slate-400 italic">No submissions logged for this date.</p>`;
+        ` : "";
+
+        // Show summary pills whenever at least one hunter logged a submission
+        const summaryPillsHtml = uids.length > 0 ? `
+          <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
+            <span class="bg-slate-950/60 border border-amber-500/30 text-amber-300 font-bold px-2 py-0.5 rounded-md">
+              ⭐ ${escapeHtml(starSummary)}
+            </span>
+            <span class="bg-slate-950/60 border border-cyan-500/30 text-cyan-200 font-bold px-2 py-0.5 rounded-md">
+              ⚡ ${escapeHtml(speedSummary)}
+            </span>
+            ${totalComments > 0 ? `
+              <span class="bg-slate-950/60 border border-white/15 text-slate-200 font-bold px-2 py-0.5 rounded-md">
+                💬 ${totalComments}
+              </span>
+            ` : ""}
+          </div>
+        ` : "";
 
         return `
           <div onclick="openHistoricModal('${dKey}')" class="bg-cove-dark/95 border border-amber-500/50 hover:border-amber-300 rounded-xl p-3 shadow-lg cursor-pointer transition space-y-2 relative group">
             <!-- Classic Red X on the dashed map trail -->
             <div class="absolute -left-[29px] top-4 text-sm select-none drop-shadow">❌</div>
 
-            <!-- Top Row: Date + Victor Badge -->
+            <!-- Top Row: Date + Victor/Forfeited Badge -->
             <div class="flex items-center justify-between gap-2 border-b border-amber-800/40 pb-1.5">
               <span class="text-[11px] font-pirate font-black text-amber-300 bg-cove-inner px-2.5 py-0.5 rounded-full border border-amber-500/30">${dKey}</span>
-              <span class="text-[10px] font-extrabold text-amber-200 bg-amber-950/80 px-2.5 py-0.5 rounded-full border border-amber-600/50">${overallLabel}</span>
+              <span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${badgeStyle}">${overallLabel}</span>
             </div>
 
             <!-- Prompt Text -->
             <p class="font-serif italic text-xs text-amber-100 leading-snug">"${escapeHtml(promptText)}"</p>
 
-            <!-- Mini Winner Pills (Star Winner & Speed Winner) -->
-            <div class="flex flex-wrap gap-1.5 text-[10px]">
-              <span class="bg-slate-950/60 border border-amber-500/30 text-amber-300 font-bold px-2 py-0.5 rounded-md">
-                ⭐ Stars: ${escapeHtml(starSummary)}
-              </span>
-              <span class="bg-slate-950/60 border border-cyan-500/30 text-cyan-200 font-bold px-2 py-0.5 rounded-md">
-                ⚡ Speed: ${escapeHtml(speedSummary)}
-              </span>
-            </div>
-
-            <!-- Mini Photo Thumbnails -->
+            <!-- Summary Winner Pills & Clean Photo Previews -->
+            ${summaryPillsHtml}
             ${miniPreviewsHtml}
 
-            <!-- Bottom Action Bar with Magnifying Glass & View More Button -->
+            <!-- Bottom Action Bar -->
             <div class="flex items-center justify-between pt-1 border-t border-amber-800/30">
-              <span class="text-[10px] text-slate-300">${uids.length} Hunter${uids.length === 1 ? "" : "s"} logged</span>
-              <button type="button" onclick="event.stopPropagation(); openHistoricModal('${dKey}')" class="btn-gold px-3 py-1 rounded-lg text-[10px] font-extrabold flex items-center gap-1 shadow">
+              <span class="text-[10px] text-slate-300">${isForfeited && uids.length === 0 ? "No hunters logged • Forfeited" : `${uids.length} Hunter${uids.length === 1 ? "" : "s"} logged`}</span>
+              <button type="button" onclick="event.stopPropagation(); openHistoricModal('${dKey}')" class="btn-gold px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center gap-1 shadow">
                 🔍 View More
               </button>
             </div>
@@ -2056,11 +2069,12 @@
       const container = document.getElementById("historicModalContent");
 
       if (uids.length === 0) {
+        const isPast = dateKey < todayKey;
         container.innerHTML = `
           <div class="space-y-3 text-center py-4">
             <span class="text-xs font-black text-amber-300">${dateKey}</span>
             <p class="font-serif italic text-amber-100 text-sm">"${escapeHtml(promptText)}"</p>
-            <p class="text-xs text-slate-300">No booty logged.</p>
+            <p class="text-xs text-rose-300 font-bold">${isPast ? "🏳️ Voyage Forfeited (No booty logged)" : "⏳ No booty logged yet today."}</p>
           </div>
         `;
         document.getElementById("historicModal").classList.remove("hidden");
