@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.6</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.7</p>
     </div>
   </div>
 
@@ -346,24 +346,6 @@
 
             <p id="notifStatusText" class="text-[10px] text-amber-200/80 text-center font-mono"></p>
 
-            <!-- Remote Crewmate 8am Alarm Registration (temporary helper while partner is asleep in another timezone) -->
-            <div class="bg-cove-dark/80 border border-amber-500/30 rounded-xl p-2.5 space-y-2 mt-1">
-              <div class="flex items-center justify-between gap-2">
-                <span class="text-[10px] font-bold text-amber-300">Crewmate 8:00 AM Alarm 🌏</span>
-                <select id="partnerTzSelect" class="bg-cove-purple-body border border-amber-500/40 rounded-lg px-2 py-1 text-[10px] text-white font-semibold focus:outline-none focus:border-amber-300">
-                  <option value="Asia/Taipei" selected>Taiwan (UTC+8)</option>
-                  <option value="Europe/London">UK (London)</option>
-                  <option value="America/New_York">US Eastern</option>
-                  <option value="America/Los_Angeles">US Pacific</option>
-                  <option value="Australia/Sydney">Australia (Sydney)</option>
-                </select>
-              </div>
-              <button onclick="registerPartnerFor8amAlarm()" id="syncPartnerAlarmBtn" class="w-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/60 text-amber-200 py-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1.5">
-                <i data-lucide="globe" class="w-3.5 h-3.5"></i> Sync Crewmate's 8am Alarm Now
-              </button>
-              <p id="partnerAlarmStatus" class="text-[10px] text-slate-300 text-center leading-tight"></p>
-            </div>
-
             <p class="text-[10px] text-slate-300 text-center leading-tight">
               Tip: On iPhone/Android, tap Browser Menu → <strong>Add to Home Screen</strong> for full app & alert support!
             </p>
@@ -373,7 +355,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.6</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.7</p>
           </div>
         </div>
       </div>
@@ -560,111 +542,6 @@
           body: JSON.stringify({ uid: currentUser.uid })
         });
       } catch (e) {}
-    }
-
-    async function findPartnerPushRecord() {
-      if (!currentUser) return null;
-      let partnerUid = getOtherKnownUid();
-      let partnerSub = null;
-      let partnerName = "Crewmate";
-
-      if (partnerUid) {
-        try {
-          const snap = await db.ref(`users/${partnerUid}`).once("value");
-          const val = snap.val() || {};
-          if (val.pushSubscription && val.pushSubscription.endpoint) {
-            partnerSub = val.pushSubscription;
-          }
-          if (val.moniker && !isGenericName(val.moniker)) partnerName = val.moniker;
-          else if (allUsers[partnerUid] && !isGenericName(allUsers[partnerUid].moniker)) partnerName = allUsers[partnerUid].moniker;
-        } catch (e) {}
-      }
-
-      // Fallback scan in case partnerUid wasn't loaded into allUsers yet
-      if (!partnerSub) {
-        try {
-          const allSnap = await db.ref("users").once("value");
-          const usersObj = allSnap.val() || {};
-          for (const uid of Object.keys(usersObj)) {
-            if (uid !== currentUser.uid && usersObj[uid] && usersObj[uid].pushSubscription && usersObj[uid].pushSubscription.endpoint) {
-              partnerUid = uid;
-              partnerSub = usersObj[uid].pushSubscription;
-              if (usersObj[uid].moniker && !isGenericName(usersObj[uid].moniker)) {
-                partnerName = usersObj[uid].moniker;
-              }
-              break;
-            }
-          }
-        } catch (e) {}
-      }
-
-      return partnerUid ? { uid: partnerUid, subscription: partnerSub, name: partnerName } : null;
-    }
-
-    async function checkPartnerPushTokenStatus() {
-      const statusEl = document.getElementById("partnerAlarmStatus");
-      if (!statusEl || !currentUser) return;
-      const partner = await findPartnerPushRecord();
-      if (partner && partner.subscription) {
-        statusEl.textContent = `Ready: ${partner.name}'s push token found in Firebase!`;
-        statusEl.className = "text-[10px] text-emerald-300 text-center leading-tight";
-      } else {
-        statusEl.textContent = "No push token saved for crewmate yet—they'll need to tap Enable Alerts once when awake.";
-        statusEl.className = "text-[10px] text-amber-200/80 text-center leading-tight";
-      }
-    }
-
-    async function registerPartnerFor8amAlarm() {
-      const statusEl = document.getElementById("partnerAlarmStatus");
-      const tzSelect = document.getElementById("partnerTzSelect");
-      const chosenTz = tzSelect ? tzSelect.value : "Asia/Taipei";
-
-      if (!currentUser || !PUSH_WORKER_URL) return;
-      if (statusEl) {
-        statusEl.textContent = "Registering crewmate with Cloudflare...";
-        statusEl.className = "text-[10px] text-cyan-200 text-center leading-tight";
-      }
-
-      const partner = await findPartnerPushRecord();
-      if (!partner || !partner.subscription) {
-        if (statusEl) {
-          statusEl.textContent = "⚠️ No push token found for crewmate yet—they need to open the app & tap Enable Alerts once.";
-          statusEl.className = "text-[10px] text-rose-300 text-center leading-tight";
-        }
-        showInAppToast("No Crewmate Token ⚠️", "They haven't enabled Cloudflare Push yet.");
-        return;
-      }
-
-      try {
-        const res = await fetch(`${PUSH_WORKER_URL.replace(/\/$/, "")}/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            uid: partner.uid,
-            subscription: partner.subscription,
-            timeZone: chosenTz
-          })
-        });
-        const data = await res.json();
-        if (data && data.dailyAlarmEnabled) {
-          if (statusEl) {
-            statusEl.textContent = `✅ ${partner.name} scheduled for 8:00 AM (${chosenTz})!`;
-            statusEl.className = "text-[10px] text-emerald-300 font-bold text-center leading-tight";
-          }
-          showInAppToast("Crewmate Alarm Synced 🌏", `${partner.name} will get woken up at 8:00 AM (${chosenTz})!`);
-        } else {
-          if (statusEl) {
-            statusEl.textContent = "⚠️ Add the PUSH_SUBS KV binding in Cloudflare first, then try again.";
-            statusEl.className = "text-[10px] text-amber-300 text-center leading-tight";
-          }
-          showInAppToast("KV Binding Needed ⚠️", "Add PUSH_SUBS KV binding in Cloudflare Settings.");
-        }
-      } catch (e) {
-        if (statusEl) {
-          statusEl.textContent = "⚠️ Could not reach Cloudflare Worker. Check your deployment.";
-          statusEl.className = "text-[10px] text-rose-300 text-center leading-tight";
-        }
-      }
     }
 
     async function sendRemotePush(subscription, title, body, tag, delaySeconds = 0) {
@@ -1413,7 +1290,8 @@
 
       const currentSig = sigParts.sort().join("|");
       if (lastNotifiedSignature && currentSig !== lastNotifiedSignature && alertMsg) {
-        showInAppToast("Ahoy!", alertMsg, true, `hunt-${Date.now()}`);
+        // Show clean in-app toast when open; Cloudflare Push handles OS pop-up banners so they don't double up
+        showInAppToast("Ahoy!", alertMsg, !PUSH_WORKER_URL, `hunt-${Date.now()}`);
       }
       lastNotifiedSignature = currentSig;
     }
@@ -1428,7 +1306,6 @@
       if (targetEl) targetEl.classList.remove("hidden");
       if (tabName === "profile") {
         updateNotifButtonUI();
-        checkPartnerPushTokenStatus();
       }
       if (window.lucide) lucide.createIcons();
     }
@@ -1752,15 +1629,30 @@
       return vals.reduce((a, b) => a + b, 0) / vals.length;
     }
 
-    function determineWinner(dayEntries) {
+    function determineWinner(dayEntries, isPastDay = false) {
       const uids = Object.keys(dayEntries || {});
-      if (uids.length < 2) return { status: "waiting" };
+
+      if (uids.length === 0) {
+        return isPastDay
+          ? { status: "forfeited", reason: "No hunters logged!" }
+          : { status: "waiting" };
+      }
+
+      if (uids.length === 1) {
+        if (!isPastDay) return { status: "waiting" };
+        const soloUid = uids[0];
+        const soloEntry = dayEntries[soloUid];
+        if (soloEntry.defeated) {
+          return { status: "forfeited", reason: "No booty submitted!" };
+        }
+        return { status: "winner", winnerUid: soloUid, reason: "Won by opponent's forfeit!" };
+      }
 
       const [uidA, uidB] = uids;
       const a = dayEntries[uidA];
       const b = dayEntries[uidB];
 
-      if (a.defeated && b.defeated) return { status: "draw", reason: "Both raised white flags!" };
+      if (a.defeated && b.defeated) return { status: "forfeited", reason: "Both raised white flags!" };
       if (a.defeated) return { status: "winner", winnerUid: uidB, reason: "Won by opponent's defeat!" };
       if (b.defeated) return { status: "winner", winnerUid: uidA, reason: "Won by opponent's defeat!" };
 
@@ -1989,7 +1881,7 @@
       }
       arenaGrid.innerHTML = html;
 
-      const res = determineWinner(todayEntries);
+      const res = determineWinner(todayEntries, false);
       if (res.status === "winner") {
         const wUser = allUsers[res.winnerUid] || todayEntries[res.winnerUid] || {};
         const wName = wUser.moniker || "Winner";
@@ -2006,6 +1898,13 @@
           <p class="text-xs font-semibold">${res.reason}</p>
         `;
         winnerBanner.classList.remove("hidden");
+      } else if (res.status === "forfeited") {
+        winnerBanner.className = "bg-rose-950/90 text-rose-200 border-2 border-rose-500/60 rounded-2xl p-3 text-center shadow-2xl space-y-1";
+        winnerBanner.innerHTML = `
+          <p class="font-pirate font-black text-sm uppercase tracking-wide">🏳️ Voyage Forfeited!</p>
+          <p class="text-xs font-semibold">${res.reason}</p>
+        `;
+        winnerBanner.classList.remove("hidden");
       } else {
         winnerBanner.classList.add("hidden");
       }
@@ -2019,7 +1918,7 @@
       Object.keys(allHunts).filter(dKey => dKey <= todayKey).forEach(dKey => {
         const day = allHunts[dKey] || {};
         const entries = getPlayerEntriesForDay(day);
-        const res = determineWinner(entries);
+        const res = determineWinner(entries, dKey < todayKey);
 
         if (res.status === "winner" && res.winnerUid) {
           stats[res.winnerUid] = stats[res.winnerUid] || { wins: 0, totalStars: 0, countStars: 0 };
@@ -2089,9 +1988,8 @@
         const entries = getPlayerEntriesForDay(day);
         const promptText = HARDCODED_PROMPTS[dKey] || day._prompt || getPromptForDate(dKey);
         const uids = Object.keys(entries);
-        const res = determineWinner(entries);
         const isPastDay = dKey < todayKey;
-        const isForfeited = isPastDay && uids.length < 2;
+        const res = determineWinner(entries, isPastDay);
 
         // Compute Star Winner, Speed Winner & Total Comments
         let starSummary = "—";
@@ -2157,7 +2055,7 @@
           overallLabel = `👑 Victor: ${escapeHtml(wName)}`;
         } else if (res.status === "draw") {
           overallLabel = "🤝 Result: Draw!";
-        } else if (isForfeited) {
+        } else if (res.status === "forfeited") {
           overallLabel = "🏳️ Forfeited";
           badgeStyle = "text-rose-200 bg-rose-950/80 border-rose-500/50";
         }
@@ -2184,15 +2082,18 @@
           </div>
         ` : "";
 
-        // Show summary pills whenever at least one hunter logged a submission
-        const summaryPillsHtml = uids.length > 0 ? `
+        // Show summary pills when there is at least one valid photo or comment
+        const hasValidPhoto = uids.some(uid => !entries[uid].defeated);
+        const summaryPillsHtml = (hasValidPhoto || totalComments > 0) ? `
           <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
-            <span class="bg-slate-950/60 border border-amber-500/30 text-amber-300 font-bold px-2 py-0.5 rounded-md">
-              ⭐ ${escapeHtml(starSummary)}
-            </span>
-            <span class="bg-slate-950/60 border border-cyan-500/30 text-cyan-200 font-bold px-2 py-0.5 rounded-md">
-              ⚡ ${escapeHtml(speedSummary)}
-            </span>
+            ${hasValidPhoto ? `
+              <span class="bg-slate-950/60 border border-amber-500/30 text-amber-300 font-bold px-2 py-0.5 rounded-md">
+                ⭐ ${escapeHtml(starSummary)}
+              </span>
+              <span class="bg-slate-950/60 border border-cyan-500/30 text-cyan-200 font-bold px-2 py-0.5 rounded-md">
+                ⚡ ${escapeHtml(speedSummary)}
+              </span>
+            ` : ""}
             ${totalComments > 0 ? `
               <span class="bg-slate-950/60 border border-white/15 text-slate-200 font-bold px-2 py-0.5 rounded-md">
                 💬 ${totalComments}
@@ -2200,6 +2101,16 @@
             ` : ""}
           </div>
         ` : "";
+
+        // Clear bottom status label
+        let footerStatusText = `${uids.length} Hunter${uids.length === 1 ? "" : "s"} logged`;
+        if (res.status === "forfeited") {
+          footerStatusText = uids.length === 0
+            ? "No hunters logged • Forfeited"
+            : (uids.length === 2 ? "Both admitted defeat • Forfeited" : "1 Hunter defeated • Forfeited");
+        } else if (isPastDay && uids.length === 1 && res.status === "winner") {
+          footerStatusText = "1 Hunter logged • Opponent forfeited";
+        }
 
         return `
           <div onclick="openHistoricModal('${dKey}')" class="bg-cove-dark/95 border border-amber-500/50 hover:border-amber-300 rounded-xl p-3 shadow-lg cursor-pointer transition space-y-2 relative group">
@@ -2221,7 +2132,7 @@
 
             <!-- Bottom Action Bar -->
             <div class="flex items-center justify-between pt-1 border-t border-amber-800/30">
-              <span class="text-[10px] text-slate-300">${isForfeited && uids.length === 0 ? "No hunters logged • Forfeited" : `${uids.length} Hunter${uids.length === 1 ? "" : "s"} logged`}</span>
+              <span class="text-[10px] text-slate-300">${footerStatusText}</span>
               <button type="button" onclick="event.stopPropagation(); openHistoricModal('${dKey}')" class="btn-gold px-2.5 py-1 rounded-lg text-[10px] font-extrabold flex items-center gap-1 shadow">
                 🔍 View More
               </button>
