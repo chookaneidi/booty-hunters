@@ -150,7 +150,7 @@
       </div>
 
       <p id="authError" class="text-xs text-rose-400 hidden"></p>
-      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.3</p>
+      <p class="text-[10px] text-amber-300/60 font-mono pt-1 tracking-wider">Version 3.6</p>
     </div>
   </div>
 
@@ -345,6 +345,25 @@
             </button>
 
             <p id="notifStatusText" class="text-[10px] text-amber-200/80 text-center font-mono"></p>
+
+            <!-- Remote Crewmate 8am Alarm Registration (temporary helper while partner is asleep in another timezone) -->
+            <div class="bg-cove-dark/80 border border-amber-500/30 rounded-xl p-2.5 space-y-2 mt-1">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[10px] font-bold text-amber-300">Crewmate 8:00 AM Alarm 🌏</span>
+                <select id="partnerTzSelect" class="bg-cove-purple-body border border-amber-500/40 rounded-lg px-2 py-1 text-[10px] text-white font-semibold focus:outline-none focus:border-amber-300">
+                  <option value="Asia/Taipei" selected>Taiwan (UTC+8)</option>
+                  <option value="Europe/London">UK (London)</option>
+                  <option value="America/New_York">US Eastern</option>
+                  <option value="America/Los_Angeles">US Pacific</option>
+                  <option value="Australia/Sydney">Australia (Sydney)</option>
+                </select>
+              </div>
+              <button onclick="registerPartnerFor8amAlarm()" id="syncPartnerAlarmBtn" class="w-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/60 text-amber-200 py-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1.5">
+                <i data-lucide="globe" class="w-3.5 h-3.5"></i> Sync Crewmate's 8am Alarm Now
+              </button>
+              <p id="partnerAlarmStatus" class="text-[10px] text-slate-300 text-center leading-tight"></p>
+            </div>
+
             <p class="text-[10px] text-slate-300 text-center leading-tight">
               Tip: On iPhone/Android, tap Browser Menu → <strong>Add to Home Screen</strong> for full app & alert support!
             </p>
@@ -354,7 +373,7 @@
             <button onclick="handleLogout()" class="w-full bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 text-rose-200 py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5">
               <i data-lucide="log-out" class="w-4 h-4"></i> Log Out of Account
             </button>
-            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.3</p>
+            <p class="text-[10px] text-amber-300/60 font-mono pt-2 tracking-wider">Booty Hunters • Version 3.6</p>
           </div>
         </div>
       </div>
@@ -465,8 +484,9 @@
     let todayKey = "";
     let activeHistoricDateKey = null;
     let alertsEnabled = localStorage.getItem("bh_alerts_enabled") === "true";
+    let dailyAlarmSynced = false;
     let lastNotifiedSignature = "";
-    let last8amAlertDate = "";
+    let last8amAlertDate = localStorage.getItem("bh_last_8am_date") || "";
     let testNotifTimeout = null;
     let testCountdownInterval = null;
     let testTargetTimestamp = 0;
@@ -498,12 +518,152 @@
           });
         }
         const subJson = sub.toJSON();
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/London";
+
         if (currentUser && subJson) {
-          await db.ref(`users/${currentUser.uid}/pushSubscription`).set(subJson);
+          await db.ref(`users/${currentUser.uid}`).update({
+            pushSubscription: subJson,
+            timeZone: timeZone
+          });
+
+          // Register subscription & local timezone with Cloudflare Worker for automatic 8:00 AM background pushes
+          try {
+            const res = await fetch(`${PUSH_WORKER_URL.replace(/\/$/, "")}/register`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                uid: currentUser.uid,
+                subscription: subJson,
+                timeZone: timeZone
+              })
+            });
+            const data = await res.json();
+            dailyAlarmSynced = Boolean(data && data.dailyAlarmEnabled);
+          } catch (e) {
+            dailyAlarmSynced = false;
+          }
+          updateNotifButtonUI();
         }
         return subJson;
       } catch (e) {
         return null;
+      }
+    }
+
+    async function unregisterFrom8amAlarm() {
+      dailyAlarmSynced = false;
+      if (!currentUser || !PUSH_WORKER_URL) return;
+      try {
+        await fetch(`${PUSH_WORKER_URL.replace(/\/$/, "")}/unregister`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid: currentUser.uid })
+        });
+      } catch (e) {}
+    }
+
+    async function findPartnerPushRecord() {
+      if (!currentUser) return null;
+      let partnerUid = getOtherKnownUid();
+      let partnerSub = null;
+      let partnerName = "Crewmate";
+
+      if (partnerUid) {
+        try {
+          const snap = await db.ref(`users/${partnerUid}`).once("value");
+          const val = snap.val() || {};
+          if (val.pushSubscription && val.pushSubscription.endpoint) {
+            partnerSub = val.pushSubscription;
+          }
+          if (val.moniker && !isGenericName(val.moniker)) partnerName = val.moniker;
+          else if (allUsers[partnerUid] && !isGenericName(allUsers[partnerUid].moniker)) partnerName = allUsers[partnerUid].moniker;
+        } catch (e) {}
+      }
+
+      // Fallback scan in case partnerUid wasn't loaded into allUsers yet
+      if (!partnerSub) {
+        try {
+          const allSnap = await db.ref("users").once("value");
+          const usersObj = allSnap.val() || {};
+          for (const uid of Object.keys(usersObj)) {
+            if (uid !== currentUser.uid && usersObj[uid] && usersObj[uid].pushSubscription && usersObj[uid].pushSubscription.endpoint) {
+              partnerUid = uid;
+              partnerSub = usersObj[uid].pushSubscription;
+              if (usersObj[uid].moniker && !isGenericName(usersObj[uid].moniker)) {
+                partnerName = usersObj[uid].moniker;
+              }
+              break;
+            }
+          }
+        } catch (e) {}
+      }
+
+      return partnerUid ? { uid: partnerUid, subscription: partnerSub, name: partnerName } : null;
+    }
+
+    async function checkPartnerPushTokenStatus() {
+      const statusEl = document.getElementById("partnerAlarmStatus");
+      if (!statusEl || !currentUser) return;
+      const partner = await findPartnerPushRecord();
+      if (partner && partner.subscription) {
+        statusEl.textContent = `Ready: ${partner.name}'s push token found in Firebase!`;
+        statusEl.className = "text-[10px] text-emerald-300 text-center leading-tight";
+      } else {
+        statusEl.textContent = "No push token saved for crewmate yet—they'll need to tap Enable Alerts once when awake.";
+        statusEl.className = "text-[10px] text-amber-200/80 text-center leading-tight";
+      }
+    }
+
+    async function registerPartnerFor8amAlarm() {
+      const statusEl = document.getElementById("partnerAlarmStatus");
+      const tzSelect = document.getElementById("partnerTzSelect");
+      const chosenTz = tzSelect ? tzSelect.value : "Asia/Taipei";
+
+      if (!currentUser || !PUSH_WORKER_URL) return;
+      if (statusEl) {
+        statusEl.textContent = "Registering crewmate with Cloudflare...";
+        statusEl.className = "text-[10px] text-cyan-200 text-center leading-tight";
+      }
+
+      const partner = await findPartnerPushRecord();
+      if (!partner || !partner.subscription) {
+        if (statusEl) {
+          statusEl.textContent = "⚠️ No push token found for crewmate yet—they need to open the app & tap Enable Alerts once.";
+          statusEl.className = "text-[10px] text-rose-300 text-center leading-tight";
+        }
+        showInAppToast("No Crewmate Token ⚠️", "They haven't enabled Cloudflare Push yet.");
+        return;
+      }
+
+      try {
+        const res = await fetch(`${PUSH_WORKER_URL.replace(/\/$/, "")}/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            uid: partner.uid,
+            subscription: partner.subscription,
+            timeZone: chosenTz
+          })
+        });
+        const data = await res.json();
+        if (data && data.dailyAlarmEnabled) {
+          if (statusEl) {
+            statusEl.textContent = `✅ ${partner.name} scheduled for 8:00 AM (${chosenTz})!`;
+            statusEl.className = "text-[10px] text-emerald-300 font-bold text-center leading-tight";
+          }
+          showInAppToast("Crewmate Alarm Synced 🌏", `${partner.name} will get woken up at 8:00 AM (${chosenTz})!`);
+        } else {
+          if (statusEl) {
+            statusEl.textContent = "⚠️ Add the PUSH_SUBS KV binding in Cloudflare first, then try again.";
+            statusEl.className = "text-[10px] text-amber-300 text-center leading-tight";
+          }
+          showInAppToast("KV Binding Needed ⚠️", "Add PUSH_SUBS KV binding in Cloudflare Settings.");
+        }
+      } catch (e) {
+        if (statusEl) {
+          statusEl.textContent = "⚠️ Could not reach Cloudflare Worker. Check your deployment.";
+          statusEl.className = "text-[10px] text-rose-300 text-center leading-tight";
+        }
       }
     }
 
@@ -513,7 +673,13 @@
         const res = await fetch(`${PUSH_WORKER_URL.replace(/\/$/, "")}/send-push`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ subscription, title, body, tag, delaySeconds })
+          body: JSON.stringify({
+            subscription,
+            title,
+            body,
+            tag,
+            delaySeconds
+          })
         });
         return res.ok;
       } catch (e) {
@@ -708,6 +874,7 @@
       if (alertsEnabled) {
         alertsEnabled = false;
         localStorage.setItem("bh_alerts_enabled", "false");
+        unregisterFrom8amAlarm();
         updateNotifButtonUI();
         showInAppToast("Alerts Muted 🔕", "Phone notifications turned off.");
         return;
@@ -881,7 +1048,9 @@
             ? "Status: Add to Home Screen on iPhone to unlock OS alerts"
             : "Status: OS notifications unavailable in this browser";
         } else {
-          const pushMode = PUSH_WORKER_URL && VAPID_PUBLIC_KEY ? "Cloudflare Push Ready" : "Local Mode";
+          const pushMode = PUSH_WORKER_URL && VAPID_PUBLIC_KEY
+            ? (dailyAlarmSynced ? "Cloudflare Push + 8am Alarm Active" : "Cloudflare Push Ready")
+            : "Local Mode";
           statusEl.textContent = `Permission: ${Notification.permission.toUpperCase()} • ${pushMode}`;
         }
       }
@@ -901,7 +1070,13 @@
       const now = new Date();
       if (now.getHours() === 8 && now.getMinutes() === 0 && last8amAlertDate !== todayKey) {
         last8amAlertDate = todayKey;
-        showInAppToast("📜 New 8:00 AM Target!", `Today's Hunt: "${getPromptForDate(todayKey)}"`, true, `8am-${todayKey}`);
+        localStorage.setItem("bh_last_8am_date", todayKey);
+        showInAppToast(
+          "📜 Ahoy! New Booty Target!",
+          "Today's 8:00 AM target has dropped—tap to unroll the scroll & start the hunt! 🏴‍☠️",
+          !dailyAlarmSynced,
+          `8am-${todayKey}`
+        );
       }
     }, 30000);
 
@@ -1251,7 +1426,10 @@
       });
       const targetEl = document.getElementById("view" + tabName.charAt(0).toUpperCase() + tabName.slice(1));
       if (targetEl) targetEl.classList.remove("hidden");
-      if (tabName === "profile") updateNotifButtonUI();
+      if (tabName === "profile") {
+        updateNotifButtonUI();
+        checkPartnerPushTokenStatus();
+      }
       if (window.lucide) lucide.createIcons();
     }
 
@@ -1354,13 +1532,14 @@
           defeated: false
         });
 
-        document.getElementById("photoTitle").value = "";
-        fileInput.value = "";
         notifyPartnerViaCloudflare(
           "🏴‍☠️ Booty Hunters",
           `📸 ${userProfile.moniker} uploaded booty for today's hunt!`,
           `upload-${todayKey}-${currentUser.uid}`
         );
+
+        document.getElementById("photoTitle").value = "";
+        fileInput.value = "";
         showInAppToast("Booty Submitted! 🏴‍☠️", `Logged in ${formatDuration(elapsedSeconds)}!`);
         switchTab("target");
       } catch (err) {
@@ -1400,7 +1579,6 @@
           `⭐ ${userProfile.moniker} rated ${dayLabel} ${stars} ${stars === 1 ? "star" : "stars"}!`,
           `rate-${dateKey}-${targetUid}-${stars}`
         );
-        refreshActiveHistoricIfOpen(dateKey);
       });
     }
 
@@ -1425,14 +1603,10 @@
         timestamp: Date.now()
       }).then(() => {
         if (inputEl) inputEl.value = "";
-        const pushBody = dateKey === todayKey
+        const msg = dateKey === todayKey
           ? `💬 ${userProfile.moniker}: "${text}"`
           : `🗺️ ${userProfile.moniker} commented on ${dateKey}: "${text}"`;
-        notifyPartnerViaCloudflare(
-          "🏴‍☠️ Booty Hunters",
-          pushBody,
-          `comment-${newRef.key}`
-        );
+        notifyPartnerViaCloudflare("🏴‍☠️ Booty Hunters", msg, `comment-${dateKey}-${newRef.key}`);
         refreshActiveHistoricIfOpen(dateKey);
       });
     }
@@ -1483,22 +1657,20 @@
       if (!currentUser) return;
       const ref = db.ref(`booty_hunters/${dateKey}/${targetUid}/comments/${commentId}/reactions/${emojiKey}/${currentUser.uid}`);
       ref.once("value").then(snap => {
-        if (snap.exists()) {
-          return ref.remove();
-        }
-        return ref.set(true).then(() => {
-          const entry = allHunts[dateKey] && allHunts[dateKey][targetUid];
-          const comment = entry && entry.comments && entry.comments[commentId];
+        if (snap.exists()) return ref.remove().then(() => false);
+        return ref.set(true).then(() => true);
+      }).then(added => {
+        if (added) {
           const rObj = REACTION_EMOJIS.find(r => r.key === emojiKey);
-          const emojiChar = rObj ? rObj.emoji : "🏴‍☠️";
-          const snippet = comment && comment.text ? comment.text : "your comment";
+          const emojiChar = rObj ? rObj.emoji : "✨";
+          const entry = allHunts[dateKey] && allHunts[dateKey][targetUid];
+          const commentText = (entry && entry.comments && entry.comments[commentId] && entry.comments[commentId].text) || "a comment";
           notifyPartnerViaCloudflare(
             "🏴‍☠️ Booty Hunters",
-            `${emojiChar} ${userProfile.moniker} reacted to "${snippet}"`,
-            `react-${commentId}-${emojiKey}-${currentUser.uid}`
+            `${emojiChar} ${userProfile.moniker} reacted to "${commentText}"`,
+            `react-${commentId}-${emojiKey}-${Date.now()}`
           );
-        });
-      }).then(() => {
+        }
         refreshActiveHistoricIfOpen(dateKey);
       });
     }
